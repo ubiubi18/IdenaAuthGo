@@ -1,6 +1,6 @@
 # IdenaAuthGo
 
-WORK IN PROGRESS
+DISCLAIMER: WORK IN PROGRESS, EXPECT A LOT OF CHANGES, NOT PRODUCTION READY!
 
 A minimal Go backend for "Sign in with Idena" and advanced Proof-of-Humanity checks.
 
