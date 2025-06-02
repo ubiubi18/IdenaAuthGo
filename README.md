@@ -112,7 +112,7 @@ tail -f idenauthgo.log
 ## Example .env
 
 ```env
-BASE_URL="https://proofofhuman.work"
+BASE_URL="https://your-website.io"
 IDENA_RPC_KEY="your-node-api-key"
 ```
 
