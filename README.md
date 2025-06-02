@@ -2,39 +2,12 @@
 
 ⚠️ DISCLAIMER: WORK IN PROGRESS – NOT PRODUCTION READY – RAPIDLY DEVELOPED WITH GPT-4.1 (OPENAI) – USE WITH CAUTION – FOR DEVELOPMENT & TESTING ONLY ⚠️
 
-A minimal Go backend for "Sign in with Idena" and Proof-of-Personhood verification.
+A minimal Go backend for "Sign in with Idena".
 
 ✅ Current Functionality
 
-This backend verifies whether a given address corresponds to a valid, Idena identity with a stake over 10,000 iDNA. It provides simple endpoints for integration in web apps, DApps, and automation tools.
+This backend verifies whether a given address corresponds to a valid, Idena identity with a stake over 10,000 iDNA. 
 
-Valid identities trigger a signed response.
-
-Invalid or non-eligible identities (e.g., random addresses or lower-tier statuses) result so far in a fallback to an about:blank popup.
-
-
-🛠️ Planned Roadmap
-
-Implementation of a reproducible and verifiable Merkle root based on Idena identity snapshots - Integrate an adapted version of Identity Bridge 
-https://docs.idena.io/docs/developer/identity-bridge
-Snapshot the validation state of all identities with ≥10,000 iDNA stake (or alternatively, above the discriminationStakeThreshold once implemented).
-
-Hash the resulting list into a Merkle tree.
-
-Export the Merkle root for cross-chain whitelisting, e.g., in GnosisChain smart contracts or Circles Group Currency systems.
-
----
-
-## Features
-
-* **Idena Sign-In:** Full protocol integration, compatible with Idena Web App and Desktop App.
-* **Eligibility Check:** Accepts only Human/Verified/Newbie identities with configurable minimum stake (default: 10,000 iDNA).
-* **REST API endpoints** for easy integration.
-* **Fallback to public Idena indexer** if your node fails.
-* **Detailed logging** and transparent error messages for easy debugging.
-* **MIT licensed, minimal, easy to fork.**
-
----
 
 ## Requirements
 
@@ -195,6 +168,28 @@ IDENA_RPC_KEY="your-node-api-key"
 ## License
 
 MIT License – use, fork, or contribute as you wish.
+
+---
+🛠️ Planned Roadmap
+
+Implementation of a reproducible and verifiable Merkle root based on Idena identity snapshots - Integrate an adapted version of Identity Bridge 
+https://docs.idena.io/docs/developer/identity-bridge
+Snapshot the validation state of all identities with ≥10,000 iDNA stake (or alternatively, above the discriminationStakeThreshold once implemented).
+
+Hash the resulting list into a Merkle tree.
+
+Export the Merkle root for cross-chain whitelisting, e.g., in GnosisChain smart contracts or Circles Group Currency systems.
+
+---
+
+## Features
+
+* **Idena Sign-In:** Full protocol integration, compatible with Idena Web App and Desktop App.
+* **Eligibility Check:** Accepts only Human/Verified/Newbie identities with configurable minimum stake (default: 10,000 iDNA).
+* **REST API endpoints** for easy integration.
+* **Fallback to public Idena indexer** if your node fails.
+* **Detailed logging** and transparent error messages for easy debugging.
+* **MIT licensed, minimal, easy to fork.**
 
 ---
 
