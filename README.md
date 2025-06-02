@@ -15,10 +15,8 @@ Invalid or non-eligible identities (e.g., random addresses or lower-tier statuse
 
 🛠️ Planned Roadmap
 
-Implementation of a reproducible and verifiable Merkle root based on Idena identity snapshots:
-
-Integrate an adapted version of Identity Bridge.
-
+Implementation of a reproducible and verifiable Merkle root based on Idena identity snapshots - Integrate an adapted version of Identity Bridge 
+https://docs.idena.io/docs/developer/identity-bridge
 Snapshot the validation state of all identities with ≥10,000 iDNA stake (or alternatively, above the discriminationStakeThreshold once implemented).
 
 Hash the resulting list into a Merkle tree.
