@@ -4,7 +4,7 @@ DISCLAIMER: WORK IN PROGRESS, EXPECT A LOT OF CHANGES, NOT PRODUCTION READY!
 
 A minimal Go backend for "Sign in with Idena" and Proof-of-Person checks.
 
-*yet to be build: adaption of [Identity-Bridge](https://docs.idena.io/docs/developer/identity-bridge) , snapshot  the validation state of all identities with stake above 10k idna (or yet to be implemented alternatively all identities above "discriminationStakeThreshold" )  on the Idena blockchain to be hashed to a Merkle tree. The resulting hash shall be useable for whitelisting on other blockchains, for instance, with a Circles Group Currency / gnosischain smart contract. *
+###Roadmap yet to be build: adaption of [Identity-Bridge](https://docs.idena.io/docs/developer/identity-bridge) , snapshot  the validation state of all identities with stake above 10k idna (or yet to be implemented alternatively all identities above "discriminationStakeThreshold" )  on the Idena blockchain to be hashed to a Merkle tree. The resulting hash shall be useable for whitelisting on other blockchains, for instance, with a Circles Group Currency / gnosischain smart contract. 
 
 This backend so far only verifies if an address belongs to a valid, human Idena identity with stake above 10k idna - and exposes simple endpoints for web, DApp, or automation use cases. As of today it works only with a valid Identity, while a random address or not eligible ID will just result in an empty "about:blank" popup.
 
