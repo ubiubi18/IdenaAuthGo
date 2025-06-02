@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Eligibility Checker | proof of human</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <style>
+    body {
+      background: #16181c;
+      color: #f5f7fa;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 420px;
+      margin: 28px auto 0 auto;
+      padding: 0 8px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 26px;
+    }
+    .card {
+      background: #20232a;
+      border-radius: 14px;
+      box-shadow: 0 4px 24px #2360ff12;
+      padding: 24px 18px 18px 18px;
+      text-align: center;
+    }
+    .card h1, .card h2 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      color: #62a6ff;
+      font-size: 1.3em;
+    }
+    .card p {
+      margin: 8px 0 0 0;
+      color: #ccd6e0;
+      font-size: 1em;
+    }
+    .btn-primary {
+      display: block;
+      width: 100%;
+      margin: 14px 0;
+      background: linear-gradient(90deg, #2261a6 60%, #348ffe 100%);
+      color: #fff;
+      padding: 16px 0;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 8px #2261a644;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover {
+      background: linear-gradient(90deg, #348ffe 30%, #2261a6 100%);
+    }
+    .meta {
+      font-size: 0.99em;
+      color: #9eb2c5;
+      margin: 8px 0;
+    }
+    .meta strong { color: #f0b700; }
+    .github-link {
+      color: #89bbfd;
+      font-weight: 600;
+      display: block;
+      font-size: 1.08em;
+      margin: 16px 0 4px 0;
+      text-decoration: underline dotted;
+      word-break: break-all;
+    }
+    .disclaimer {
+      background: #24272e;
+      color: #a9bacd;
+      border-radius: 10px;
+      font-size: 0.97em;
+      padding: 17px 13px 13px 13px;
+      margin-bottom: 12px;
+      text-align: left;
+      box-shadow: 0 2px 8px #33446633;
+    }
+    @media (max-width: 500px) {
+      .container { max-width: 98vw; }
+      .card, .disclaimer { padding: 16px 7px 11px 7px; }
+      .btn-primary { font-size: 1em; }
+      .github-link { font-size: 1em; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Eligibility Checker</h1>
+      <p>Proof your address to check your eligibility.</p>
+      <a href="/signin"><button class="btn-primary">Sign in with Idena</button></a>
+      <div class="meta">
+        <div>Current setting:</div>
+        <div>• Must be: <strong>Human, Verified, or Newbie</strong></div>
+        <div>• Must have: <strong>10,000+ IDNA</strong> at stake</div>
+      </div>
+    </div>
+    <a class="github-link" href="https://github.com/ubiubi18/IdenaAuthGo" target="_blank" rel="noopener">Source on GitHub</a>
+    <div class="disclaimer">
+      <b>Disclaimer:</b> This is a hobby vibe code project, provided strictly for experimental, non-commercial, and private use only.
+      No guarantees, representations, or warranties of any kind are made—especially regarding functionality, accuracy, availability, or security. Usage is strictly at your own risk.
+      No liability is accepted for any direct or indirect damages or losses, to the fullest extent permitted by law.
+    </div>
+  </div>
+</body>
+</html>
