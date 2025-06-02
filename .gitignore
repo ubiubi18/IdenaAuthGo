@@ -1,25 +1,28 @@
-idenauthgo
-sessions.db
-*.log
-*.env
-*.swp
-.env
-.env
-.env
-idenauthgo
-idena-auth
-idenauthgo.log
-.env
+# Binary and build artifacts
 idenauthgo
 idenauthgo.log
-sessions.db
-idena-auth
-main.go.save
-main.go.save.1
-Accept
-Content-Type
-Content-Length
-Host
-POST
-User-Agent
 
+# Environment and config
+.env
+.env.*
+
+# Database and user files
+sessions.db
+
+# Editor/OS files
+*.swp
+*~
+.DS_Store
+
+# Backup/test/debug files
+main.go.save
+main.go.save.*
+Accept:
+Content-Length:
+Content-Type:
+Host:
+POST
+User-Agent:
+
+# VSCode etc (optional)
+.vscode/
