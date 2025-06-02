@@ -169,7 +169,7 @@ You do **NOT** need a domain for local or internal usage. For production and app
 
 ---
 
-## Example .env (do not commit your real .env!)
+## Example .env
 
 ```env
 BASE_URL="https://yourdomain.tld"
