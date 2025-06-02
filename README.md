@@ -1,5 +1,7 @@
 # IdenaAuthGo
 
+WORK IN PROGRESS
+
 A minimal Go backend for "Sign in with Idena" and advanced Proof-of-Humanity checks.
 
 This backend verifies if an address belongs to a valid, human Idena identity with sufficient stake and exposes simple endpoints for web, DApp, or automation use cases.
