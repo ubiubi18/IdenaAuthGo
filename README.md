@@ -6,11 +6,11 @@ A minimal Go backend for "Sign in with Idena" and Proof-of-Personhood verificati
 
 ✅ Current Functionality
 
-This backend verifies whether a given address corresponds to a valid, Idena identity with a stake over 10,000 iDNA. It provides simple API endpoints for integration in web apps, DApps, and automation tools.
+This backend verifies whether a given address corresponds to a valid, Idena identity with a stake over 10,000 iDNA. It provides simple endpoints for integration in web apps, DApps, and automation tools.
 
 Valid identities trigger a signed response.
 
-Invalid or non-eligible identities (e.g., random addresses or lower-tier statuses) result in a fallback to an about:blank popup.
+Invalid or non-eligible identities (e.g., random addresses or lower-tier statuses) result so far in a fallback to an about:blank popup.
 
 
 🛠️ Planned Roadmap
