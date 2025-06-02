@@ -67,7 +67,7 @@ BASE_URL="http://YOUR_SERVER_IP:3030"
 # To use app.idena.io sign-in with Callback to website you MUST use HTTPS and a domain!
 
 # IDENA_RPC_KEY is your idena-go node API key.
-# To generate a strong one:
+# To generate a new API key in console:
 #   openssl rand -hex 16
 # Paste output below and use the same for idena-go startup.
 IDENA_RPC_KEY="your-node-api-key"
