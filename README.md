@@ -190,15 +190,6 @@ You do **NOT** need a domain for local or internal usage. For production and app
 BASE_URL="https://yourdomain.tld"
 IDENA_RPC_KEY="your-node-api-key"
 ```
-
----
-
-## Security
-
-* Never commit your real `.env` file. Only `.env.example` is for the repo.
-* Use strong random API keys.
-* For public deployment, always use HTTPS and a real VPS/server.
-
 ---
 
 ## License
@@ -211,5 +202,5 @@ MIT License – use, fork, or contribute as you wish.
 
 Questions? Issues? PRs welcome at [https://github.com/ubiubi18/IdenaAuthGo](https://github.com/ubiubi18/IdenaAuthGo)
 
-## Disclaimer
+## another Disclaimer
 This is a hobby vibe code project, provided strictly for experimental, non-commercial, and private use only. No guarantees, representations, or warranties of any kind are made—especially regarding functionality, accuracy, availability, or security. Usage is strictly at your own risk. No liability is accepted for any direct or indirect damages or losses, to the fullest extent permitted by law.
