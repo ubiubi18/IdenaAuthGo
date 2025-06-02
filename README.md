@@ -57,14 +57,14 @@ nano .env
 
 ```env
 # BASE_URL sets the public address where your backend is reachable by browsers and by app.idena.io.
-# For local testing:
-BASE_URL="http://localhost:3030"
-# For a VPS with IP only:
-# BASE_URL="http://YOUR_SERVER_IP:3030"
+# For a VPS setup with IP only:
+BASE_URL="http://YOUR_SERVER_IP:3030"
+# For local use with desktop app:
+# BASE_URL="http://localhost:3030"
 # For production with a domain:
 # BASE_URL="https://yourdomain.tld"
 
-# To use app.idena.io sign-in you MUST use HTTPS and a domain!
+# To use app.idena.io sign-in with Callback to website you MUST use HTTPS and a domain!
 
 # IDENA_RPC_KEY is your idena-go node API key.
 # To generate a strong one:
@@ -72,6 +72,21 @@ BASE_URL="http://localhost:3030"
 # Paste output below and use the same for idena-go startup.
 IDENA_RPC_KEY="your-node-api-key"
 ```
+## Running IdenaAuthGo: Local vs. Public
+
+**Personal/local mode (Desktop only):**
+- Set `BASE_URL="http://localhost:3030"` in `.env`
+- Start backend and idena-go locally
+- Open browser on **the same PC** to `http://localhost:3030/signin`
+- Sign in with your Desktop Idena app (deep link works)
+- No mobile or web support!
+
+**Public/VPS/production mode (for remote/web/mobile):**
+- Set `BASE_URL="http://YOUR_IP:3030"` or `BASE_URL="https://yourdomain.tld"`
+- Start backend and idena-go on server
+- Open port 3030 to the world (firewall/router)
+- Anyone can sign in using app.idena.io or the mobile app
+- Callbacks and nonces are reachable over the internet
 
 ---
 
