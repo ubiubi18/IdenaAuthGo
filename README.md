@@ -1,4 +1,4 @@
-# 🔐 Sign in with Idena – Minimal Go Backend
+# 🔐 Idena Eligibility Checker – Minimal Go Backend
 
 This project provides a minimal backend in Go to verify if an address corresponds to a valid Idena identity with a stake over 10,000 iDNA.
 ✅ Current Features
