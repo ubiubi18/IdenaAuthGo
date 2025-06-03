@@ -1,12 +1,31 @@
-# IdenaAuthGo
+# 🔐 Sign in with Idena – Minimal Go Backend
 
-⚠️ DISCLAIMER: WORK IN PROGRESS – NOT PRODUCTION READY – MOSTLY VIBE CODING WITH GPT-4.1 (OPENAI) – USE WITH CAUTION – FOR DEVELOPMENT & TESTING ONLY ⚠️
+This project provides a minimal backend in Go to verify if an address corresponds to a valid Idena identity with a stake over 10,000 iDNA.
+✅ Current Features
 
-A minimal Go backend for "Sign in with Idena".
+    Implements the “Sign in with Idena” deep link flow
 
-✅ Current Functionality
+    Verifies signature and stake using either a local Idena node or the public API
 
-This backend verifies whether a given address corresponds to a valid, Idena identity with a stake over 10,000 iDNA. 
+    Confirms eligibility (Newbie, Verified, Human with ≥10k iDNA)
+
+🧭 Roadmap
+
+    - Fetch discriminationStakeThreshold from local node
+
+    - Add lightweight local indexer (track identities over last 30 days)
+
+    - Store identity snapshots in JSON format
+
+    - Implement Merkle tree generator for exportable whitelists
+
+    - Add UI field to compare submitted address against live whitelist
+
+    - Fallback to sign-in with idena if no address is entered
+
+    - Export sorted whitelist of eligible IDs (Human/Verified/Newbie above 10k iDNA or other discriminators)
+
+    - Publish verifiable Merkle root for use on other blockchains
 
 
 ## Requirements
