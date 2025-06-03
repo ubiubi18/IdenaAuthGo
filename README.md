@@ -195,5 +195,5 @@ MIT License – use, fork, or contribute as you wish.
 
 Questions? Issues? PRs welcome at [https://github.com/ubiubi18/IdenaAuthGo](https://github.com/ubiubi18/IdenaAuthGo)
 
-## another Disclaimer
-This is a hobby vibe code project, provided strictly for experimental, non-commercial, and private use only. No guarantees, representations, or warranties of any kind are made—especially regarding functionality, accuracy, availability, or security. Usage is strictly at your own risk. No liability is accepted for any direct or indirect damages or losses, to the fullest extent permitted by law.
+## Disclaimer
+This is a hobby project, built for fun and experimental use by curious minds. Brainy users especially welcome! Please note: it’s strictly for private, non-commercial use. There are no guarantees, promises, or warranties of any kind—about features, correctness, uptime, or security. You use this entirely at your own risk. The creators accept no responsibility or liability for any loss or damage, as far as the law allows.
