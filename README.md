@@ -188,27 +188,6 @@ IDENA_RPC_KEY="your-node-api-key"
 
 MIT License – use, fork, or contribute as you wish.
 
----
-🛠️ Planned Roadmap
-
-Implementation of a reproducible and verifiable Merkle root based on Idena identity snapshots - Integrate an adapted version of Identity Bridge 
-https://docs.idena.io/docs/developer/identity-bridge
-Snapshot the validation state of all identities with ≥10,000 iDNA stake (or alternatively, above the discriminationStakeThreshold once implemented).
-
-Hash the resulting list into a Merkle tree.
-
-Export the Merkle root for cross-chain whitelisting, e.g., in GnosisChain smart contracts or Circles Group Currency systems.
-
----
-
-## Features
-
-* **Idena Sign-In:** Full protocol integration, compatible with Idena Web App and Desktop App.
-* **Eligibility Check:** Accepts only Human/Verified/Newbie identities with configurable minimum stake (default: 10,000 iDNA).
-* **REST API endpoints** for easy integration.
-* **Fallback to public Idena indexer** if your node fails.
-* **Detailed logging** and transparent error messages for easy debugging.
-* **MIT licensed, minimal, easy to fork.**
 
 ---
 
