@@ -1,12 +1,31 @@
-# IdenaAuthGo
+# 🔐 Idena Eligibility Checker – Minimal Go Backend
 
-⚠️ DISCLAIMER: WORK IN PROGRESS – NOT PRODUCTION READY – MOSTLY VIBE CODING WITH GPT-4.1 (OPENAI) – USE WITH CAUTION – FOR DEVELOPMENT & TESTING ONLY ⚠️
+This project provides a minimal backend in Go to verify if an address corresponds to a valid Idena identity with a stake over 10,000 iDNA.
+✅ Current Features
 
-A minimal Go backend for "Sign in with Idena".
+    Implements the “Sign in with Idena” deep link flow
 
-✅ Current Functionality
+    Verifies signature and stake using either a local Idena node or the public API
 
-This backend verifies whether a given address corresponds to a valid, Idena identity with a stake over 10,000 iDNA. 
+    Confirms eligibility (Newbie, Verified, Human with ≥10k iDNA)
+
+🧭 Roadmap
+
+    - Fetch discriminationStakeThreshold from local node
+
+    - Add lightweight local indexer (track identities over last 30 days)
+
+    - Store identity snapshots in JSON format
+
+    - Implement Merkle tree generator for exportable whitelists
+
+    - Add UI field to compare submitted address against live whitelist
+
+    - Fallback to sign-in with idena if no address is entered
+
+    - Export sorted whitelist of eligible IDs (Human/Verified/Newbie above 10k iDNA or other discriminators)
+
+    - Publish verifiable Merkle root for use on other blockchains
 
 
 ## Requirements
@@ -169,27 +188,6 @@ IDENA_RPC_KEY="your-node-api-key"
 
 MIT License – use, fork, or contribute as you wish.
 
----
-🛠️ Planned Roadmap
-
-Implementation of a reproducible and verifiable Merkle root based on Idena identity snapshots - Integrate an adapted version of Identity Bridge 
-https://docs.idena.io/docs/developer/identity-bridge
-Snapshot the validation state of all identities with ≥10,000 iDNA stake (or alternatively, above the discriminationStakeThreshold once implemented).
-
-Hash the resulting list into a Merkle tree.
-
-Export the Merkle root for cross-chain whitelisting, e.g., in GnosisChain smart contracts or Circles Group Currency systems.
-
----
-
-## Features
-
-* **Idena Sign-In:** Full protocol integration, compatible with Idena Web App and Desktop App.
-* **Eligibility Check:** Accepts only Human/Verified/Newbie identities with configurable minimum stake (default: 10,000 iDNA).
-* **REST API endpoints** for easy integration.
-* **Fallback to public Idena indexer** if your node fails.
-* **Detailed logging** and transparent error messages for easy debugging.
-* **MIT licensed, minimal, easy to fork.**
 
 ---
 
@@ -197,5 +195,5 @@ Export the Merkle root for cross-chain whitelisting, e.g., in GnosisChain smart 
 
 Questions? Issues? PRs welcome at [https://github.com/ubiubi18/IdenaAuthGo](https://github.com/ubiubi18/IdenaAuthGo)
 
-## another Disclaimer
-This is a hobby vibe code project, provided strictly for experimental, non-commercial, and private use only. No guarantees, representations, or warranties of any kind are made—especially regarding functionality, accuracy, availability, or security. Usage is strictly at your own risk. No liability is accepted for any direct or indirect damages or losses, to the fullest extent permitted by law.
+## Disclaimer
+This is a hobby project, built for fun and experimental use by curious minds. Brainy users especially welcome! Please note: it’s strictly for private, non-commercial use. There are no guarantees, promises, or warranties of any kind—about features, correctness, uptime, or security. You use this entirely at your own risk. The creators accept no responsibility or liability for any loss or damage, as far as the law allows.
