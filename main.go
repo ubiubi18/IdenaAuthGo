@@ -17,14 +17,14 @@ import (
     "strconv"
     "strings"
     "time"
-
-    _ "github.com/mattn/go-sqlite3"
+    "IdenaAuthGo/agents" // If using modules; may need path adjustment
+    "github.com/mattn/go-sqlite3"
     "github.com/ethereum/go-ethereum/crypto"
 )
 
 // Environment variables, with fallback for local/dev usage
 var (
-    BASE_URL      = getenv("BASE_URL", "http://localhost:3030")
+    BASE_URL      = getenv("BASE_URL", "http://proofofhuman.work")
     IDENA_RPC_KEY = getenv("IDENA_RPC_KEY", "")
 )
 
@@ -57,6 +57,7 @@ func getenv(key, fallback string) string {
 }
 
 func main() {
+    go agents.RunIdentityFetcher("config/agents.json")
     log.SetFlags(log.LstdFlags | log.Lshortfile)
     var err error
     db, err = sql.Open("sqlite3", dbFile)
