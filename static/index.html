@@ -99,12 +99,14 @@
   <div class="container">
     <div class="card">
       <h1>Eligibility Checker</h1>
-      <p>Proof your address to check your eligibility.</p>
-      <a href="/signin"><button class="btn-primary">Sign in with Idena</button></a>
+      <p>Check an address or sign in with Idena.</p>
+      <input id="addr" type="text" placeholder="0x..." style="width:100%;padding:12px;border-radius:8px;border:1px solid #555;background:#2b2e34;color:#fff;" />
+      <button class="btn-primary" onclick="checkAddr()">Check address</button>
+      <button class="btn-primary" onclick="signinFallback()">Sign in with Idena</button>
       <div class="meta">
         <div>Current setting:</div>
         <div>• Must be: <strong>Human, Verified, or Newbie</strong></div>
-        <div>• Must have: <strong>10,000+ IDNA</strong> at stake</div>
+        <div>• Must have: <strong id="stake-info">10,000+</strong> IDNA at stake</div>
       </div>
     </div>
     <a class="github-link" href="https://github.com/ubiubi18/IdenaAuthGo" target="_blank" rel="noopener">Source on GitHub</a>
@@ -115,4 +117,17 @@
     </div>
   </div>
 </body>
+<script>
+function checkAddr() {
+  const a = document.getElementById('addr').value.trim();
+  if(!a) { signinFallback(); return; }
+  fetch('/whitelist/check?address='+a).then(r=>r.json()).then(res=>{
+    alert(res.eligible ? 'Eligible!' : 'Not eligible');
+  });
+}
+function signinFallback() {
+  window.location = '/signin';
+}
+fetch('/merkle_root').then(r=>r.json()).then(()=>{});
+</script>
 </html>
