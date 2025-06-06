@@ -86,7 +86,7 @@ func fetchStakeThreshold() {
 }
 
 func main() {
-	go agents.RunIdentityFetcher("config/agents.json")
+	go agents.RunIdentityFetcher("agents/fetcher_config.json")
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	var err error
 	db, err = sql.Open("sqlite3", dbFile)

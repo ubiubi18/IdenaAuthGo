@@ -4,6 +4,7 @@ package agents
 import (
     "bytes"
     "encoding/json"
+    "io"
     "log"
     "net/http"
     "os"
@@ -14,7 +15,7 @@ import (
 type Identity struct {
     Address string  `json:"address"`
     State   string  `json:"state"`
-    Stake   float64 `json:"stake"`
+    Stake   float64 `json:"stake,string"`
     Age     int     `json:"age"`
 }
 
@@ -26,7 +27,9 @@ type FetcherConfig struct {
     AddressListFile string `json:"address_list_file"`
 }
 
+// Load fetcher configuration from JSON file, print debug info
 func LoadFetcherConfig(configPath string) (*FetcherConfig, error) {
+    log.Printf("[AGENT][Fetcher] Loading fetcher config from %s", configPath)
     f, err := os.Open(configPath)
     if err != nil {
         return nil, err
@@ -36,25 +39,30 @@ func LoadFetcherConfig(configPath string) (*FetcherConfig, error) {
     if err := json.NewDecoder(f).Decode(&cfg); err != nil {
         return nil, err
     }
+    log.Printf("[AGENT][Fetcher] Config loaded: %+v", cfg)
     return &cfg, nil
 }
 
-// Example: Load list of addresses from file (one per line)
+// Load list of addresses from file (one per line), print debug info
 func LoadAddressList(path string) ([]string, error) {
+    log.Printf("[AGENT][Fetcher] Loading address list from: %s", path)
     data, err := os.ReadFile(path)
     if err != nil {
+        log.Printf("[AGENT][Fetcher] Error reading address list: %v", err)
         return nil, err
     }
-lines := []string{}
-for _, line := range strings.Split(string(data), "\n") {
-    trimmed := strings.TrimSpace(line)
-    if trimmed != "" {
-        lines = append(lines, trimmed)
+    lines := []string{}
+    for _, line := range strings.Split(string(data), "\n") {
+        trimmed := strings.TrimSpace(line)
+        if trimmed != "" {
+            lines = append(lines, trimmed)
+        }
     }
-}
+    log.Printf("[AGENT][Fetcher] Loaded %d addresses", len(lines))
     return lines, nil
 }
 
+// Fetch identity details from node; log raw response and decoded result
 func FetchIdentity(address, nodeURL, apiKey string) (*Identity, error) {
     reqData := map[string]interface{}{
         "jsonrpc": "2.0",
@@ -70,20 +78,30 @@ func FetchIdentity(address, nodeURL, apiKey string) (*Identity, error) {
     req.Header.Set("Content-Type", "application/json")
     resp, err := http.DefaultClient.Do(req)
     if err != nil {
+        log.Printf("[AGENT][Fetcher] HTTP error for %s: %v", address, err)
         return nil, err
     }
     defer resp.Body.Close()
+
+    // Log raw body for debugging
+    bodyBytes, _ := io.ReadAll(resp.Body)
+    log.Printf("[AGENT][Fetcher] Raw RPC response for %s: %s", address, string(bodyBytes))
+    resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes)) // Reset for decoder
+
     var rpcResp struct {
         Result Identity `json:"result"`
     }
     if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+        log.Printf("[AGENT][Fetcher] Failed to decode JSON for %s: %v", address, err)
         return nil, err
     }
+    log.Printf("[AGENT][Fetcher] Decoded identity for %s: %+v", address, rpcResp.Result)
     return &rpcResp.Result, nil
 }
 
-// Main agent loop
+// Main fetcher loop with full logging
 func RunIdentityFetcher(configPath string) {
+    log.Printf("[AGENT][Fetcher] RunIdentityFetcher called with configPath=%q", configPath)
     cfg, err := LoadFetcherConfig(configPath)
     if err != nil {
         log.Fatalf("[AGENT][Fetcher] Failed to load config: %v", err)
