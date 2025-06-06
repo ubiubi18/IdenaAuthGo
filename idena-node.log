@@ -1,5 +1,0 @@
-nohup: ignoring input
-[31mERROR[0m[06-03|14:57:26.467] Cannot transform consensus config        [31merr[0m="resource temporarily unavailable"
-[32mINFO [0m[06-03|14:57:26.467] Idena node is starting                   [32mversion[0m=1.1.1
-[31mERROR[0m[06-03|14:57:26.467] Cannot start initial RPC endpoint        [31merror[0m="listen tcp 127.0.0.1:9009: bind: address already in use"
-[31mERROR[0m[06-03|14:57:26.467] resource temporarily unavailable 

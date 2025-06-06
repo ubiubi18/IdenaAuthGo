@@ -19,7 +19,7 @@ import (
     "strconv"
     "strings"
     "time"
-    "idenauthgo/agents"
+    "idenauthgo/agents" // If using modules; may need path adjustment
     _ "github.com/mattn/go-sqlite3"
     "github.com/ethereum/go-ethereum/crypto"
 )
@@ -226,8 +226,10 @@ func exportWhitelist() {
 		"merkle_root": computeMerkleRoot(list),
 		"addresses":   list,
 	}
-	b, _ := json.MarshalIndent(data, "", "  ")
-	os.WriteFile("data/whitelist.json", b, 0644)
+        b, _ := json.MarshalIndent(data, "", "  ")
+        if err := os.WriteFile("data/whitelist.json", b, 0644); err != nil {
+                log.Printf("[WHITELIST] failed to write whitelist.json: %v", err)
+        }
 }
 
 func randHex(n int) string {
