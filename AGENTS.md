@@ -1,7 +1,3 @@
-Absolutely! Here’s a proposed `AGENTS.md` for your project—modeled after common AI/Codex agent formats. It assumes your project will use agent-style automation, either now or in the roadmap.
-
----
-
 # AGENTS.md
 
 This file documents autonomous and semi-autonomous agents (“bots”) used or planned for this repository.
@@ -80,4 +76,3 @@ Agents are configured via environment variables and JSON config files:
 ---
 
 > **Note:** This file is evolving as we automate more project workflows. Contributions and suggestions welcome!
-This file is evolving as we automate more project workflows. Contributions and suggestions welcome!
