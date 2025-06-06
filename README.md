@@ -32,16 +32,16 @@ Install [Go 1.20+](https://go.dev/dl/) and SQLite3.
 git clone https://github.com/ubiubi18/IdenaAuthGo.git
 cd IdenaAuthGo
 
-## 3. Configure Environment
+### 3. Configure Environment
 
-# Copy and edit `.env`:
+ Copy and edit `.env`:
 
 cp .env.example .env
-# Then edit .env to set:
-# BASE_URL=http://localhost:3030
-# IDENA_RPC_KEY=your_idena_node_api_key (optional)
+ Then edit .env to set:
+ BASE_URL=http://localhost:3030
+ IDENA_RPC_KEY=your_idena_node_api_key (optional)
 
-# Or set environment variables manually:
+ Or set environment variables manually:
 
 export BASE_URL="http://localhost:3030"
 export IDENA_RPC_KEY="your_idena_rpc_key"
@@ -51,9 +51,9 @@ export IDENA_RPC_KEY="your_idena_rpc_key"
 
 go run main.go
 
-# This starts the backend at http://localhost:3030.
+ This starts the backend at http://localhost:3030.
 
-# Available routes include:
+Available routes include:
 
     /signin – initiates login with Idena
 
@@ -67,15 +67,15 @@ go run main.go
 
 ### 5. Use the Indexer (optional)
 
-# The indexer in rolling_indexer/ fetches identity snapshots periodically and stores them in identities.db.
+The indexer in rolling_indexer/ fetches identity snapshots periodically and stores them in identities.db.
 
-# To build and run:
+To build and run:
 
 cd rolling_indexer
 go build -o rolling-indexer
 ./rolling-indexer
 
-# You can configure it via config.json:
+ You can configure it via config.json:
 
 {
   "rpc_url": "http://localhost:9009",
@@ -84,13 +84,13 @@ go build -o rolling-indexer
   "db_path": "identities.db"
 }
 
-# Or using environment variables:
+ Or using environment variables:
 
 export RPC_URL="http://localhost:9009"
 export RPC_KEY="your_rpc_key"
 export FETCH_INTERVAL_MINUTES=10
 
-# Exposed endpoints:
+ Exposed endpoints:
 
     /identities/latest – most recent state of all tracked identities
 
