@@ -1,83 +1,38 @@
-Absolutely! Here’s a proposed `AGENTS.md` for your project—modeled after common AI/Codex agent formats. It assumes your project will use agent-style automation, either now or in the roadmap.
+# Agents
 
----
+This repository contains two small components used to collect identity data from an Idena node.
 
-# AGENTS.md
+## identity_fetcher
 
-This file documents autonomous and semi-autonomous agents (“bots”) used or planned for this repository.
+`agents/identity_fetcher.go` polls a list of addresses and writes their latest identity state to a JSON snapshot file. It uses a simple config file with fields:
 
----
+- `interval_minutes` – polling interval
+- `node_url` – RPC endpoint of your Idena node
+- `api_key` – optional node API key
+- `snapshot_file` – path to write results
+- `address_list_file` – file containing addresses to query
 
-## Table of Contents
+An example config is provided in `agents/fetcher_config.example.json`. Copy it to `agents/fetcher_config.json` and run:
 
-* [Overview](#overview)
-* [Agent Roles](#agent-roles)
-* [Configuration](#configuration)
-* [Security](#security)
-* [Contributing New Agents](#contributing-new-agents)
-* [Roadmap](#roadmap)
+```bash
+cd agents
+go run identity_fetcher.go fetcher_config.json
+```
 
----
+The root `cmd/agents.go` helper also runs this agent with `config/agents.json`.
 
-## Overview
+## Rolling Indexer
 
-Agents in this project are designed to automate repetitive, verifiable, or trustless backend tasks—making the “Sign in with Idena” workflow more robust and decentralized. Each agent operates as a small service, script, or background job with a focused responsibility.
+`rolling_indexer/main.go` keeps a 30‑day rolling history of all identities. It stores data in `identities.db` and serves HTTP endpoints such as `/identities/latest` and `/identities/eligible`.
 
----
+Configuration can be provided via `rolling_indexer/config.json` (create it if needed) or environment variables `RPC_URL`, `RPC_KEY`, `FETCH_INTERVAL_MINUTES`, and `DB_PATH`.
 
-## Agent Roles
+Run the indexer with:
 
-| Agent Name          | Description                                                                        | Status  |
-| ------------------- | ---------------------------------------------------------------------------------- | ------- |
-| `identity-fetcher`  | Fetches current Idena identity data from local node and maintains a daily snapshot | Planned |
-| `threshold-updater` | Queries discriminationStakeThreshold from node and updates eligibility logic       | Planned |
-| `indexer`           | Tracks all identity addresses observed in recent blocks (last 30 days)             | Planned |
-| `merkle-builder`    | Builds and exports verifiable Merkle roots from eligible identities                | Planned |
-| `api-fallback`      | Switches to public API if local node is unavailable                                | Active  |
-| `whitelist-checker` | Provides on-demand address eligibility and whitelist comparison                    | Planned |
-| `webhook-agent`     | Notifies other services (Discord, Telegram, etc) on new eligibility events         | Planned |
+```bash
+cd rolling_indexer
+go build -o rolling-indexer
+./rolling-indexer
+```
 
----
-
-## Configuration
-
-Agents are configured via environment variables and JSON config files:
-
-* `.env` (see `README.md`)
-* `config/agents.json` (example structure):
-
-  ```json
-  {
-    "identity-fetcher": { "interval_minutes": 60 },
-    "indexer": { "retention_days": 30 },
-    "api-fallback": { "enabled": true }
-  }
-  ```
-
----
-
-## Security
-
-* Agents interacting with the node require an API key. **Never commit real API keys to version control.**
-* If running webhook integrations, use dedicated bot tokens/secrets and restrict their permissions.
-
----
-
-## Contributing New Agents
-
-1. Propose your agent’s function via an issue or PR.
-2. Follow the [CONTRIBUTING.md](CONTRIBUTING.md) guidelines.
-3. Keep agents modular—each agent should do one thing well.
-
----
-
-## Roadmap
-
-* [ ] Modularize agent runners for parallel execution
-* [ ] Add Prometheus/Grafana metrics for all agent jobs
-* [ ] Support for external verification (e.g., onchain proof publication)
-
----
-
-> **Note:** This file is evolving as we automate more project workflows. Contributions and suggestions welcome!
-This file is evolving as we automate more project workflows. Contributions and suggestions welcome!
+Address tracking for fallback API requests is read from `rolling_indexer/addresses.txt`.
