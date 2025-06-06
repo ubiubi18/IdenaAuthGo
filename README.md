@@ -65,40 +65,51 @@ Available routes include:
 
     /merkle_root – (to be implemented)
 
-### 5. Use the Indexer (optional)
+### 5. Build & Run the Rolling Indexer
 
-The indexer in rolling_indexer/ fetches identity snapshots periodically and stores them in identities.db.
+`rolling_indexer/main.go` polls an Idena node and writes identity snapshots to an SQLite database.
+The default database file is `identities.db` inside the `rolling_indexer` directory.
 
-To build and run:
+To build and launch the service:
 
+```bash
 cd rolling_indexer
-go build -o rolling-indexer
+go build -o rolling-indexer main.go
+
+# environment variables override config.json
+export RPC_URL="http://localhost:9009"     # node RPC endpoint
+export RPC_KEY="your_rpc_key"              # if your node requires an API key
+export FETCH_INTERVAL_MINUTES=10            # how often to poll
+
 ./rolling-indexer
+```
 
- You can configure it via config.json:
+You may alternatively create a `config.json` with the same fields:
 
+```json
 {
   "rpc_url": "http://localhost:9009",
   "rpc_key": "your_rpc_key",
   "interval_minutes": 10,
   "db_path": "identities.db"
 }
+```
 
- Or using environment variables:
+Once running, the indexer serves a REST API on `:8080`. Example queries:
 
-export RPC_URL="http://localhost:9009"
-export RPC_KEY="your_rpc_key"
-export FETCH_INTERVAL_MINUTES=10
+```bash
+# latest snapshot of all identities
+curl http://localhost:8080/identities/latest
 
- Exposed endpoints:
+# only addresses currently eligible for PoH
+curl http://localhost:8080/identities/eligible
 
-    /identities/latest – most recent state of all tracked identities
+# full history for a single address
+curl http://localhost:8080/identity/0x1234...
 
-    /identities/eligible – eligible for PoH (Human, Verified, Newbie + ≥10k stake)
-
-    /identity/{address} – full history for one address
-
-    /state/{state} – addresses by current state
+# addresses filtered by state (Human, Verified, etc.)
+curl http://localhost:8080/state/Human
+```
 
 ### 6. Run the Identity Fetcher Agent (optional)
 
