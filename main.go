@@ -1,27 +1,27 @@
 package main
 
 import (
-	"bytes"
-	"crypto/rand"
-	"crypto/sha256"
-	"database/sql"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"github.com/ethereum/go-ethereum/crypto"
-	_ "github.com/mattn/go-sqlite3"
-	"html/template"
-	"idenauthgo/agents"
-	"io"
-	"log"
-	"net/http"
-	"net/url"
-	"os"
-	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
+    "bytes"
+    "crypto/rand"
+    "crypto/sha256"
+    "database/sql"
+    "encoding/hex"
+    "encoding/json"
+    "fmt"
+    "html/template"
+    "io"
+    "log"
+    "net/http"
+    "net/url"
+    "os"
+    "path/filepath"
+    "sort"
+    "strconv"
+    "strings"
+    "time"
+    "idenauthgo/agents"
+    _ "github.com/mattn/go-sqlite3"
+    "github.com/ethereum/go-ethereum/crypto"
 )
 
 // Environment variables, with fallback for local/dev usage
@@ -454,69 +454,69 @@ func verifySignature(nonce, address, signatureHex string) bool {
 
 // Get identity from node or public API as fallback
 func getIdentity(address string) (string, float64) {
-	rpcReq := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"method":  "dna_identity",
-		"params":  []string{address},
-		"id":      1,
-	}
-	if IDENA_RPC_KEY != "" {
-		rpcReq["key"] = IDENA_RPC_KEY
-	}
-	body, _ := json.Marshal(rpcReq)
-	req, _ := http.NewRequest("POST", idenaRpcUrl, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+    rpcReq := map[string]interface{}{
+        "jsonrpc": "2.0",
+        "method":  "dna_identity",
+        "params":  []string{address},
+        "id":      1,
+    }
+    if IDENA_RPC_KEY != "" {
+        rpcReq["key"] = IDENA_RPC_KEY
+    }
+    body, _ := json.Marshal(rpcReq)
+    req, _ := http.NewRequest("POST", idenaRpcUrl, bytes.NewReader(body))
+    req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
-	if err == nil && resp.StatusCode == 200 {
-		var rpcResp struct {
-			Result struct {
-				State string  `json:"state"`
-				Stake float64 `json:"stake,string"`
-			} `json:"result"`
-			Error struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&rpcResp)
-		if rpcResp.Error.Message == "" || rpcResp.Error.Code == 0 {
-			if rpcResp.Result.State != "" {
-				log.Printf("[IDENTITY][RPC] Success: state=%s, stake=%.3f", rpcResp.Result.State, rpcResp.Result.Stake)
-				return rpcResp.Result.State, rpcResp.Result.Stake
-			}
-		}
-		if rpcResp.Error.Message != "" {
-			log.Printf("[IDENTITY][RPC] Node returned error: %+v", rpcResp.Error)
-		}
-	} else {
-		log.Printf("[IDENTITY][RPC] RPC call failed: %v", err)
-	}
-	log.Printf("[IDENTITY][FALLBACK] Using public indexer for %s", address)
-	var state string
-	resp2, err := http.Get(fallbackApiUrl + "/api/Identity/" + address)
-	if err == nil && resp2.StatusCode == 200 {
-		var apiResp struct {
-			Result struct {
-				State string `json:"state"`
-			} `json:"result"`
-		}
-		_ = json.NewDecoder(resp2.Body).Decode(&apiResp)
-		state = apiResp.Result.State
-	}
-	var stake float64
-	resp3, err := http.Get(fallbackApiUrl + "/api/Address/" + address)
-	if err == nil && resp3.StatusCode == 200 {
-		var addrResp struct {
-			Result struct {
-				Stake string `json:"stake"`
-			} `json:"result"`
-		}
-		_ = json.NewDecoder(resp3.Body).Decode(&addrResp)
-		stake, _ = strconv.ParseFloat(addrResp.Result.Stake, 64)
-	}
-	log.Printf("[IDENTITY][FALLBACK] Indexer: state=%s, stake=%.3f", state, stake)
-	return state, stake
+    resp, err := http.DefaultClient.Do(req)
+    if err == nil && resp.StatusCode == 200 {
+        var rpcResp struct {
+            Result struct {
+                State string  `json:"state"`
+                Stake float64 `json:"stake,string"`
+            } `json:"result"`
+            Error struct {
+                Code    int    `json:"code"`
+                Message string `json:"message"`
+            } `json:"error"`
+        }
+        _ = json.NewDecoder(resp.Body).Decode(&rpcResp)
+        if rpcResp.Error.Message == "" || rpcResp.Error.Code == 0 {
+            if rpcResp.Result.State != "" {
+                log.Printf("[IDENTITY][RPC] Success: state=%s, stake=%.3f", rpcResp.Result.State, rpcResp.Result.Stake)
+                return rpcResp.Result.State, rpcResp.Result.Stake
+            }
+        }
+        if rpcResp.Error.Message != "" {
+            log.Printf("[IDENTITY][RPC] Node returned error: %+v", rpcResp.Error)
+        }
+    } else {
+        log.Printf("[IDENTITY][RPC] RPC call failed: %v", err)
+    }
+    log.Printf("[IDENTITY][FALLBACK] Using public indexer for %s", address)
+    var state string
+    resp2, err := http.Get(fallbackApiUrl + "/api/Identity/" + address)
+    if err == nil && resp2.StatusCode == 200 {
+        var apiResp struct {
+            Result struct {
+                State string `json:"state"`
+            } `json:"result"`
+        }
+        _ = json.NewDecoder(resp2.Body).Decode(&apiResp)
+        state = apiResp.Result.State
+    }
+    var stake float64
+    resp3, err := http.Get(fallbackApiUrl + "/api/Address/" + address)
+    if err == nil && resp3.StatusCode == 200 {
+        var addrResp struct {
+            Result struct {
+                Stake string `json:"stake"`
+            } `json:"result"`
+        }
+        _ = json.NewDecoder(resp3.Body).Decode(&addrResp)
+        stake, _ = strconv.ParseFloat(addrResp.Result.Stake, 64)
+    }
+    log.Printf("[IDENTITY][FALLBACK] Indexer: state=%s, stake=%.3f", state, stake)
+    return state, stake
 }
 
 func boolToInt(b bool) int {
