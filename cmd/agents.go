@@ -1,10 +1,9 @@
 package main
 
 import (
-    "idenauthgo/agents"
+	"idenauthgo/agents"
 )
 
 func main() {
-    agents.RunIdentityFetcher("config/agents.json")
+	agents.RunIdentityFetcher("config/agents.json")
 }
-
