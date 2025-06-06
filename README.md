@@ -102,18 +102,18 @@ export FETCH_INTERVAL_MINUTES=10
 
 ### 6. Run the Identity Fetcher Agent (optional)
 
-# Use this to fetch identity snapshots for a list of addresses:
+ Use this to fetch identity snapshots for a list of addresses:
 
 cd agents
 cp fetcher_config.example.json config.json
-# Edit config.json to match your setup
-# go run identity_fetcher.go config.json
+Edit config.json to match your setup
+go run identity_fetcher.go config.json
 
-# It reads address_list.txt, contacts your node (or fallback API), and writes identity data to snapshot.json.
+ It reads address_list.txt, contacts your node (or fallback API), and writes identity data to snapshot.json.
 
 ### 7. Export Merkle Root (upcoming)
 
-# A planned endpoint /merkle_root will:
+ A planned endpoint /merkle_root will:
 
     - Fetch all eligible addresses from the database
 
@@ -121,7 +121,7 @@ cp fetcher_config.example.json config.json
 
     - Return the Merkle root hash in JSON
 
-# This is designed for:
+ This is designed for:
 
     - Circles group minting
 
@@ -129,11 +129,11 @@ cp fetcher_config.example.json config.json
 
     - On-chain eligibility verification
 
-# You can contribute to this feature – see open issues or the Codex roadmap.
+ You can contribute to this feature – see open issues or the Codex roadmap.
 
 ### Disclaimer
 
-# This is a hobby codebase provided strictly for experimental, non-commercial, and private use only.
-# No guarantees, representations, or warranties of any kind are made — especially regarding functionality, accuracy, availability, or security.
-# Usage is strictly at your own risk. No liability is accepted for any direct or indirect damages or losses, to the fullest extent permitted by law.
-# Brain users preferred 😉
+ This is a hobby codebase provided strictly for experimental, non-commercial, and private use only.
+ No guarantees, representations, or warranties of any kind are made — especially regarding functionality, accuracy, availability, or security.
+ Usage is strictly at your own risk. No liability is accepted for any direct or indirect damages or losses, to the fullest extent permitted by law.
+Brain users preferred 😉
