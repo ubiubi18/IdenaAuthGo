@@ -17,8 +17,8 @@ import (
     "strconv"
     "strings"
     "time"
-    "IdenaAuthGo/agents" // If using modules; may need path adjustment
-    "github.com/mattn/go-sqlite3"
+    "idenauthgo/agents" // If using modules; may need path adjustment
+    _ "github.com/mattn/go-sqlite3"
     "github.com/ethereum/go-ethereum/crypto"
 )
 
