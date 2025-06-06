@@ -1,5 +1,6 @@
 # Binary and build artifacts
 idenauthgo
+idena-node.log
 idenauthgo.log
 
 # Environment and config
@@ -17,12 +18,6 @@ sessions.db
 # Backup/test/debug files
 main.go.save
 main.go.save.*
-Accept:
-Content-Length:
-Content-Type:
-Host:
-POST
-User-Agent:
 
 # VSCode etc (optional)
 .vscode/
