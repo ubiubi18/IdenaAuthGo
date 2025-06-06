@@ -29,36 +29,32 @@ Install [Go 1.20+](https://go.dev/dl/) and SQLite3.
 
 ### 2. Clone the Repo
 
-```bash
 git clone https://github.com/ubiubi18/IdenaAuthGo.git
 cd IdenaAuthGo
 
-### 3. Configure Environment
+## 3. Configure Environment
 
-Copy and edit `.env`:
+# Copy and edit `.env`:
 
-```bash
 cp .env.example .env
 # Then edit .env to set:
 # BASE_URL=http://localhost:3030
 # IDENA_RPC_KEY=your_idena_node_api_key (optional)
 
-Or set environment variables manually:
+# Or set environment variables manually:
 
-```bash
 export BASE_URL="http://localhost:3030"
 export IDENA_RPC_KEY="your_idena_rpc_key"
 
 ### 4. Run the Web Server
 
-```bash
+
 go run main.go
 
 # This starts the backend at http://localhost:3030.
 
 # Available routes include:
 
-```bash
     /signin – initiates login with Idena
 
     /callback – handles return from the Idena app
@@ -75,14 +71,12 @@ go run main.go
 
 # To build and run:
 
-```bash
 cd rolling_indexer
 go build -o rolling-indexer
 ./rolling-indexer
 
 # You can configure it via config.json:
 
-```bash
 {
   "rpc_url": "http://localhost:9009",
   "rpc_key": "your_rpc_key",
@@ -92,14 +86,12 @@ go build -o rolling-indexer
 
 # Or using environment variables:
 
-```bash
 export RPC_URL="http://localhost:9009"
 export RPC_KEY="your_rpc_key"
 export FETCH_INTERVAL_MINUTES=10
 
 # Exposed endpoints:
 
-```bash
     /identities/latest – most recent state of all tracked identities
 
     /identities/eligible – eligible for PoH (Human, Verified, Newbie + ≥10k stake)
@@ -112,7 +104,6 @@ export FETCH_INTERVAL_MINUTES=10
 
 # Use this to fetch identity snapshots for a list of addresses:
 
-```bash
 cd agents
 cp fetcher_config.example.json config.json
 # Edit config.json to match your setup
