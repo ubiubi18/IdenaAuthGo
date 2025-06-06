@@ -1,7 +1,10 @@
 # Binary and build artifacts
 idenauthgo
+
+*.log
 idena-node.log
 idenauthgo.log
+
 
 # Environment and config
 .env
