@@ -1,6 +1,6 @@
 # Binary and build artifacts
 idenauthgo
-idenauthgo.log
+*.log
 
 # Environment and config
 .env
