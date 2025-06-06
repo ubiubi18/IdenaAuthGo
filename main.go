@@ -312,6 +312,9 @@ func getIdentity(address string) (string, float64) {
     req.Header.Set("Content-Type", "application/json")
 
     resp, err := http.DefaultClient.Do(req)
+    if err == nil {
+        defer resp.Body.Close()
+    }
     if err == nil && resp.StatusCode == 200 {
         var rpcResp struct {
             Result struct {
@@ -339,6 +342,9 @@ func getIdentity(address string) (string, float64) {
     log.Printf("[IDENTITY][FALLBACK] Using public indexer for %s", address)
     var state string
     resp2, err := http.Get(fallbackApiUrl + "/api/Identity/" + address)
+    if err == nil {
+        defer resp2.Body.Close()
+    }
     if err == nil && resp2.StatusCode == 200 {
         var apiResp struct {
             Result struct {
@@ -350,6 +356,9 @@ func getIdentity(address string) (string, float64) {
     }
     var stake float64
     resp3, err := http.Get(fallbackApiUrl + "/api/Address/" + address)
+    if err == nil {
+        defer resp3.Body.Close()
+    }
     if err == nil && resp3.StatusCode == 200 {
         var addrResp struct {
             Result struct {
