@@ -1,27 +1,28 @@
 package main
 
 import (
-    "bytes"
-    "crypto/rand"
-    "crypto/sha256"
-    "database/sql"
-    "encoding/hex"
-    "encoding/json"
-    "fmt"
-    "html/template"
-    "io"
-    "log"
-    "net/http"
-    "net/url"
-    "os"
-    "path/filepath"
-    "sort"
-    "strconv"
-    "strings"
-    "time"
-    "idenauthgo/agents" // If using modules; may need path adjustment
-    _ "github.com/mattn/go-sqlite3"
-    "github.com/ethereum/go-ethereum/crypto"
+	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"html/template"
+	"idenauthgo/agents" // If using modules; may need path adjustment
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Environment variables, with fallback for local/dev usage
@@ -107,6 +108,7 @@ func main() {
 	http.HandleFunc("/whitelist", whitelistHandler)
 	http.HandleFunc("/whitelist/check", whitelistCheckHandler)
 	http.HandleFunc("/merkle_root", merkleRootHandler)
+	http.HandleFunc("/merkle_proof", merkleProofHandler)
 
 	go cleanupExpiredSessions()
 	log.Printf("Server running at http://localhost%s", listenAddr)
@@ -216,6 +218,75 @@ func computeMerkleRoot(list []string) string {
 	return hex.EncodeToString(hashes[0])
 }
 
+type ProofStep struct {
+	Hash string `json:"hash"`
+	Left bool   `json:"left"`
+}
+
+func computeMerkleProof(list []string, target string) ([]ProofStep, bool) {
+	if len(list) == 0 {
+		return nil, false
+	}
+	var hashes [][]byte
+	idx := -1
+	for i, a := range list {
+		h := sha256.Sum256([]byte(strings.ToLower(a)))
+		hashes = append(hashes, h[:])
+		if strings.EqualFold(a, target) {
+			idx = i
+		}
+	}
+	if idx == -1 {
+		return nil, false
+	}
+	pos := idx
+	var proof []ProofStep
+	for len(hashes) > 1 {
+		var next [][]byte
+		for i := 0; i < len(hashes); i += 2 {
+			if i+1 == len(hashes) {
+				if pos == i {
+					pos = len(next)
+				}
+				next = append(next, hashes[i])
+				continue
+			}
+			left := hashes[i]
+			right := hashes[i+1]
+			if pos == i {
+				proof = append(proof, ProofStep{Hash: hex.EncodeToString(right), Left: false})
+				pos = len(next)
+			} else if pos == i+1 {
+				proof = append(proof, ProofStep{Hash: hex.EncodeToString(left), Left: true})
+				pos = len(next)
+			}
+			h := sha256.Sum256(append(left, right...))
+			next = append(next, h[:])
+		}
+		hashes = next
+	}
+	return proof, true
+}
+
+func verifyMerkleProof(address string, proof []ProofStep, root string) bool {
+	h := sha256.Sum256([]byte(strings.ToLower(address)))
+	cur := h[:]
+	for _, step := range proof {
+		sib, err := hex.DecodeString(step.Hash)
+		if err != nil {
+			return false
+		}
+		if step.Left {
+			h := sha256.Sum256(append(sib, cur...))
+			cur = h[:]
+		} else {
+			h := sha256.Sum256(append(cur, sib...))
+			cur = h[:]
+		}
+	}
+	return hex.EncodeToString(cur) == root
+}
+
 func exportWhitelist() {
 	list, err := getWhitelist()
 	if err != nil {
@@ -226,10 +297,10 @@ func exportWhitelist() {
 		"merkle_root": computeMerkleRoot(list),
 		"addresses":   list,
 	}
-        b, _ := json.MarshalIndent(data, "", "  ")
-        if err := os.WriteFile("data/whitelist.json", b, 0644); err != nil {
-                log.Printf("[WHITELIST] failed to write whitelist.json: %v", err)
-        }
+	b, _ := json.MarshalIndent(data, "", "  ")
+	if err := os.WriteFile("data/whitelist.json", b, 0644); err != nil {
+		log.Printf("[WHITELIST] failed to write whitelist.json: %v", err)
+	}
 }
 
 func randHex(n int) string {
@@ -434,6 +505,25 @@ func merkleRootHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"merkle_root": computeMerkleRoot(list)})
 }
 
+func merkleProofHandler(w http.ResponseWriter, r *http.Request) {
+	addr := r.URL.Query().Get("address")
+	list, err := getWhitelist()
+	if err != nil {
+		http.Error(w, "server error", 500)
+		return
+	}
+	proof, ok := computeMerkleProof(list, addr)
+	if !ok {
+		http.Error(w, "address not found", http.StatusNotFound)
+		return
+	}
+	root := computeMerkleRoot(list)
+	writeJSON(w, map[string]interface{}{
+		"merkle_root": root,
+		"proof":       proof,
+	})
+}
+
 // Verify Ethereum signature from Idena App
 func verifySignature(nonce, address, signatureHex string) bool {
 	sig, err := hex.DecodeString(strings.TrimPrefix(signatureHex, "0x"))
@@ -456,69 +546,69 @@ func verifySignature(nonce, address, signatureHex string) bool {
 
 // Get identity from node or public API as fallback
 func getIdentity(address string) (string, float64) {
-    rpcReq := map[string]interface{}{
-        "jsonrpc": "2.0",
-        "method":  "dna_identity",
-        "params":  []string{address},
-        "id":      1,
-    }
-    if IDENA_RPC_KEY != "" {
-        rpcReq["key"] = IDENA_RPC_KEY
-    }
-    body, _ := json.Marshal(rpcReq)
-    req, _ := http.NewRequest("POST", idenaRpcUrl, bytes.NewReader(body))
-    req.Header.Set("Content-Type", "application/json")
+	rpcReq := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "dna_identity",
+		"params":  []string{address},
+		"id":      1,
+	}
+	if IDENA_RPC_KEY != "" {
+		rpcReq["key"] = IDENA_RPC_KEY
+	}
+	body, _ := json.Marshal(rpcReq)
+	req, _ := http.NewRequest("POST", idenaRpcUrl, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 
-    resp, err := http.DefaultClient.Do(req)
-    if err == nil && resp.StatusCode == 200 {
-        var rpcResp struct {
-            Result struct {
-                State string  `json:"state"`
-                Stake float64 `json:"stake,string"`
-            } `json:"result"`
-            Error struct {
-                Code    int    `json:"code"`
-                Message string `json:"message"`
-            } `json:"error"`
-        }
-        _ = json.NewDecoder(resp.Body).Decode(&rpcResp)
-        if rpcResp.Error.Message == "" || rpcResp.Error.Code == 0 {
-            if rpcResp.Result.State != "" {
-                log.Printf("[IDENTITY][RPC] Success: state=%s, stake=%.3f", rpcResp.Result.State, rpcResp.Result.Stake)
-                return rpcResp.Result.State, rpcResp.Result.Stake
-            }
-        }
-        if rpcResp.Error.Message != "" {
-            log.Printf("[IDENTITY][RPC] Node returned error: %+v", rpcResp.Error)
-        }
-    } else {
-        log.Printf("[IDENTITY][RPC] RPC call failed: %v", err)
-    }
-    log.Printf("[IDENTITY][FALLBACK] Using public indexer for %s", address)
-    var state string
-    resp2, err := http.Get(fallbackApiUrl + "/api/Identity/" + address)
-    if err == nil && resp2.StatusCode == 200 {
-        var apiResp struct {
-            Result struct {
-                State string `json:"state"`
-            } `json:"result"`
-        }
-        _ = json.NewDecoder(resp2.Body).Decode(&apiResp)
-        state = apiResp.Result.State
-    }
-    var stake float64
-    resp3, err := http.Get(fallbackApiUrl + "/api/Address/" + address)
-    if err == nil && resp3.StatusCode == 200 {
-        var addrResp struct {
-            Result struct {
-                Stake string `json:"stake"`
-            } `json:"result"`
-        }
-        _ = json.NewDecoder(resp3.Body).Decode(&addrResp)
-        stake, _ = strconv.ParseFloat(addrResp.Result.Stake, 64)
-    }
-    log.Printf("[IDENTITY][FALLBACK] Indexer: state=%s, stake=%.3f", state, stake)
-    return state, stake
+	resp, err := http.DefaultClient.Do(req)
+	if err == nil && resp.StatusCode == 200 {
+		var rpcResp struct {
+			Result struct {
+				State string  `json:"state"`
+				Stake float64 `json:"stake,string"`
+			} `json:"result"`
+			Error struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&rpcResp)
+		if rpcResp.Error.Message == "" || rpcResp.Error.Code == 0 {
+			if rpcResp.Result.State != "" {
+				log.Printf("[IDENTITY][RPC] Success: state=%s, stake=%.3f", rpcResp.Result.State, rpcResp.Result.Stake)
+				return rpcResp.Result.State, rpcResp.Result.Stake
+			}
+		}
+		if rpcResp.Error.Message != "" {
+			log.Printf("[IDENTITY][RPC] Node returned error: %+v", rpcResp.Error)
+		}
+	} else {
+		log.Printf("[IDENTITY][RPC] RPC call failed: %v", err)
+	}
+	log.Printf("[IDENTITY][FALLBACK] Using public indexer for %s", address)
+	var state string
+	resp2, err := http.Get(fallbackApiUrl + "/api/Identity/" + address)
+	if err == nil && resp2.StatusCode == 200 {
+		var apiResp struct {
+			Result struct {
+				State string `json:"state"`
+			} `json:"result"`
+		}
+		_ = json.NewDecoder(resp2.Body).Decode(&apiResp)
+		state = apiResp.Result.State
+	}
+	var stake float64
+	resp3, err := http.Get(fallbackApiUrl + "/api/Address/" + address)
+	if err == nil && resp3.StatusCode == 200 {
+		var addrResp struct {
+			Result struct {
+				Stake string `json:"stake"`
+			} `json:"result"`
+		}
+		_ = json.NewDecoder(resp3.Body).Decode(&addrResp)
+		stake, _ = strconv.ParseFloat(addrResp.Result.Stake, 64)
+	}
+	log.Printf("[IDENTITY][FALLBACK] Indexer: state=%s, stake=%.3f", state, stake)
+	return state, stake
 }
 
 func boolToInt(b bool) int {
