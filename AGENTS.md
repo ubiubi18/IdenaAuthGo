@@ -1,6 +1,6 @@
 # Agents
 
-This repository contains two small components used to collect identity data from an Idena node.
+This repository contains several small components used to collect information from an Idena node.
 
 ## identity_fetcher
 
@@ -20,6 +20,21 @@ go run identity_fetcher.go fetcher_config.json
 ```
 
 The root `cmd/agents.go` helper also runs this agent with `config/agents.json`.
+
+## session_block_finder
+
+`agents/session_block_finder.go` monitors your node for the blocks
+marking the beginning of the validation ceremony.  It polls
+`bcn_lastBlock` and `bcn_block` until the `ShortSessionStarted` and
+`LongSessionStarted` flags appear, then prints the block heights and the
+range of the short-answer window (typically six blocks).
+
+Run it with a simple config file similar to `agents/session_finder_config.example.json`:
+
+```bash
+cd agents
+go run session_block_finder.go session_finder_config.json
+```
 
 ## Rolling Indexer
 
