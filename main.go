@@ -462,12 +462,13 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`
 <html>
   <head>
-    <title>Sign-in Error</title>
+    <title>Session not found</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
   </head>
   <body>
-    <h2>❌ Invalid or expired sign-in token</h2>
-    <p>Please try logging in again.</p>
+    <h2>❌ Session not found</h2>
+    <p>Your login session could not be found or has expired.<br>
+    Please try logging in again.</p>
   </body>
 </html>
 `))
