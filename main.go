@@ -457,7 +457,20 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 	err := row.Scan(&address, &authenticated, &state, &stake)
 	if err != nil {
 		log.Printf("[CALLBACK] Token not found: %s", token)
-		http.Error(w, "Session not found", http.StatusNotFound)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`
+<html>
+  <head>
+    <title>Sign-in Error</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+  </head>
+  <body>
+    <h2>❌ Invalid or expired sign-in token</h2>
+    <p>Please try logging in again.</p>
+  </body>
+</html>
+`))
 		return
 	}
 
