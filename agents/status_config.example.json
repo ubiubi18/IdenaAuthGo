@@ -1,0 +1,7 @@
+{
+  "node_url": "http://localhost:9009",
+  "api_key": "YOUR_API_KEY_HERE",
+  "address_list_file": "data/address_list.txt",
+  "flip_report_file": "data/flip_report.txt",
+  "output_file": "data/whitelist_status.json"
+}
