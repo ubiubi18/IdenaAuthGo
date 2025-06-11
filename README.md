@@ -1,6 +1,6 @@
 # IdenaAuthGo
 
-This project is a **work-in-progress** (WIP) Go backend for verifying Idena identities and building whitelists. It provides partial implementations of a “Login with Idena” flow and an identity indexer, among other features.  
+NOT USABLE RIGHT NOW! This project is a **work-in-progress** (WIP) Go backend for verifying Idena identities and building whitelists. It provides partial implementations of a “Login with Idena” flow and an identity indexer, among other features.  
 ⚠️ **Use at your own risk** – not production-ready, not audited.
 
 ## Current Features
