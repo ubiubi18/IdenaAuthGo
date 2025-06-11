@@ -19,8 +19,8 @@ type blockResponse struct {
 	Result Block `json:"result"`
 }
 
-// fetchBlock retrieves block data by height using the node's REST API.
-func fetchBlock(baseURL string, apiKey string, height int) (*Block, error) {
+// fetchBlockREST retrieves block data by height using the node's REST API.
+func fetchBlockREST(baseURL string, apiKey string, height int) (*Block, error) {
 	url := strings.TrimRight(baseURL, "/") + fmt.Sprintf("/api/Block/%d", height)
 	if apiKey != "" {
 		url += "?apikey=" + apiKey
