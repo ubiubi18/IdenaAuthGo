@@ -370,8 +370,28 @@ func startSessionHandler(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	case http.MethodGet:
-		log.Printf("[NONCE_ENDPOINT][GET] Called - not standard flow")
-		http.Error(w, "Not implemented", http.StatusNotImplemented)
+		log.Printf("[NONCE_ENDPOINT][GET] Query: %v", r.URL.Query())
+		token := r.URL.Query().Get("token")
+		addr := r.URL.Query().Get("address")
+		if token == "" || addr == "" {
+			log.Printf("[NONCE_ENDPOINT][GET] Missing token or address")
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		nonce := "signin-" + randHex(16)
+		_, err := db.Exec("UPDATE sessions SET address=?, nonce=? WHERE token=?", addr, nonce, token)
+		if err != nil {
+			log.Printf("[NONCE_ENDPOINT][GET] DB error: %v", err)
+			writeError(w, "DB error")
+			return
+		}
+		log.Printf("[NONCE_ENDPOINT][GET] Nonce issued for token %s, address %s, nonce %s", token, addr, nonce)
+		writeJSON(w, map[string]interface{}{
+			"success": true,
+			"data": map[string]string{
+				"nonce": nonce,
+			},
+		})
 	default:
 		log.Printf("[NONCE_ENDPOINT][%s] Method not allowed", r.Method)
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
