@@ -121,7 +121,16 @@ go run agents/identity_fetcher.go agents/config.json
 
  It reads address_list.txt, contacts your node (or fallback API), and writes identity data to snapshot.json.
 
-### 7. Export Merkle Root (upcoming)
+### 7. Find Session Start Blocks (optional)
+
+ Use this helper to detect when the Short and Long Idena sessions begin:
+
+cp agents/session_finder_config.example.json agents/session_config.json
+go run agents/session_block_finder.go agents/session_config.json
+
+ It prints the block heights of both session start events.
+
+### 8. Export Merkle Root (upcoming)
 
  A planned endpoint /merkle_root will:
 
