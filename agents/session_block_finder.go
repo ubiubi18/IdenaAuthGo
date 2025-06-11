@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -104,4 +103,151 @@ func RunSessionBlockFinder(configPath string) {
 	log.Printf("[SessionFinder] Short session started at block %d", short)
 	log.Printf("[SessionFinder] Long session started at block %d", long)
 	log.Printf("[SessionFinder] Short answer window: %d-%d", short, short+5)
+=======
+	"strings"
+	"time"
+)
+
+// Block represents a minimal subset of Idena block data used by the session finder.
+type Block struct {
+	Height int      `json:"height"`
+	Flags  []string `json:"flags"`
+}
+
+// blockResponse models the response format for /api/Block endpoints.
+type blockResponse struct {
+	Result Block `json:"result"`
+}
+
+// fetchBlockREST retrieves block data by height using the node's REST API.
+func fetchBlockREST(baseURL string, apiKey string, height int) (*Block, error) {
+	url := strings.TrimRight(baseURL, "/") + fmt.Sprintf("/api/Block/%d", height)
+	if apiKey != "" {
+		url += "?apikey=" + apiKey
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var br blockResponse
+	if err := json.NewDecoder(resp.Body).Decode(&br); err != nil {
+		return nil, err
+	}
+	return &br.Result, nil
+}
+
+// fetchLastBlock returns the latest block from the node.
+func fetchLastBlock(baseURL string, apiKey string) (*Block, error) {
+	url := strings.TrimRight(baseURL, "/") + "/api/Block/Last"
+	if apiKey != "" {
+		url += "?apikey=" + apiKey
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var br blockResponse
+	if err := json.NewDecoder(resp.Body).Decode(&br); err != nil {
+		return nil, err
+	}
+	return &br.Result, nil
+}
+
+// containsFlag checks whether a block has a specific flag set.
+func containsFlag(b *Block, flag string) bool {
+	for _, f := range b.Flags {
+		if f == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// FindSessionBlocks polls the node until it detects the ShortSessionStarted and
+// LongSessionStarted flags. It returns the block heights for both events.
+// The pollInterval controls how often the node is queried for new blocks.
+func FindSessionBlocks(baseURL, apiKey string, pollInterval time.Duration) (int, int, error) {
+	if pollInterval <= 0 {
+		pollInterval = 10 * time.Second
+	}
+
+	// Wait for ShortSessionStarted
+	var shortHeight int
+	for {
+		blk, err := fetchLastBlock(baseURL, apiKey)
+		if err != nil {
+			return 0, 0, err
+		}
+		if containsFlag(blk, "ShortSessionStarted") {
+			shortHeight = blk.Height
+			break
+		}
+		time.Sleep(pollInterval)
+	}
+
+	// After the short session block is seen, the long session flag should
+	// appear within the next few blocks.
+	var longHeight int
+	for {
+		blk, err := fetchLastBlock(baseURL, apiKey)
+		if err != nil {
+			return 0, 0, err
+		}
+		if blk.Height >= shortHeight && containsFlag(blk, "LongSessionStarted") {
+			longHeight = blk.Height
+			break
+		}
+		time.Sleep(pollInterval)
+	}
+
+	return shortHeight, longHeight, nil
+}
+
+// SessionFinderConfig defines settings for RunSessionBlockFinder.
+type SessionFinderConfig struct {
+	NodeURL             string `json:"node_url"`
+	ApiKey              string `json:"api_key"`
+	PollIntervalSeconds int    `json:"poll_interval_seconds"`
+}
+
+// LoadSessionFinderConfig reads config from JSON file.
+func LoadSessionFinderConfig(path string) (*SessionFinderConfig, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var cfg SessionFinderConfig
+	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// RunSessionBlockFinder waits for the session start blocks and logs them.
+func RunSessionBlockFinder(configPath string) {
+	cfg, err := LoadSessionFinderConfig(configPath)
+	if err != nil {
+		log.Fatalf("[SessionFinder] load config: %v", err)
+	}
+	poll := time.Duration(cfg.PollIntervalSeconds) * time.Second
+	short, long, err := FindSessionBlocks(cfg.NodeURL, cfg.ApiKey, poll)
+	if err != nil {
+		log.Fatalf("[SessionFinder] find blocks: %v", err)
+	}
+	log.Printf("[SessionFinder] ShortSessionStarted at height %d", short)
+	log.Printf("[SessionFinder] LongSessionStarted at height %d", long)
+}
+
+// RunSessionBlockFinderWithConfig runs the session finder using an already loaded config.
+func RunSessionBlockFinderWithConfig(cfg *SessionFinderConfig) {
+	poll := time.Duration(cfg.PollIntervalSeconds) * time.Second
+	short, long, err := FindSessionBlocks(cfg.NodeURL, cfg.ApiKey, poll)
+	if err != nil {
+		log.Fatalf("[SessionFinder] find blocks: %v", err)
+	}
+	log.Printf("[SessionFinder] ShortSessionStarted at height %d", short)
+	log.Printf("[SessionFinder] LongSessionStarted at height %d", long)
 }

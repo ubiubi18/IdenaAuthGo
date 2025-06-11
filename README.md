@@ -10,7 +10,7 @@ This project is a **work-in-progress** (WIP) Go backend for verifying Idena iden
 - **Whitelist Endpoints:** `/whitelist` returns all eligible addresses; `/whitelist/check` verifies a single address.
 - **Merkle Root Endpoint:** Planned endpoint `/merkle_root` to return the Merkle root of the whitelist (not yet implemented).
 - **Identity Indexer:** `rolling_indexer/` polls identity data from an Idena node, stores to SQLite (`identities.db`), and serves JSON over HTTP. (⚠️ currently broken — needs debugging).
-- **Agent Scripts:** `agents/identity_fetcher.go` fetches identities by address list (configurable via `fetcher_config.example.json`), useful for bootstrapping indexer data.
+- **Agent Scripts:** `agents/identity_fetcher.go` fetches identities by address list (configurable via `agents/fetcher_config.example.json`), useful for bootstrapping indexer data.
 
 ## Roadmap & Goals
 
@@ -115,14 +115,22 @@ curl http://localhost:8080/state/Human
 
  Use this to fetch identity snapshots for a list of addresses:
 
-cd agents
-cp fetcher_config.example.json config.json
-Edit config.json to match your setup
-go run identity_fetcher.go config.json
+cp agents/fetcher_config.example.json agents/config.json
+Edit agents/config.json to match your setup
+go run agents/identity_fetcher.go agents/config.json
 
  It reads address_list.txt, contacts your node (or fallback API), and writes identity data to snapshot.json.
 
-### 7. Export Merkle Root (upcoming)
+### 7. Find Session Start Blocks (optional)
+
+ Use this helper to detect when the Short and Long Idena sessions begin:
+
+cp agents/session_finder_config.example.json agents/session_config.json
+go run agents/session_block_finder.go agents/session_config.json
+
+ It prints the block heights of both session start events.
+
+### 8. Export Merkle Root (upcoming)
 
  A planned endpoint /merkle_root will:
 
