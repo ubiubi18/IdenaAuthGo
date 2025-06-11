@@ -3,7 +3,9 @@ package agents
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -103,4 +105,51 @@ func FindSessionBlocks(baseURL, apiKey string, pollInterval time.Duration) (int,
 	}
 
 	return shortHeight, longHeight, nil
+}
+
+// SessionFinderConfig defines settings for RunSessionBlockFinder.
+type SessionFinderConfig struct {
+	NodeURL             string `json:"node_url"`
+	ApiKey              string `json:"api_key"`
+	PollIntervalSeconds int    `json:"poll_interval_seconds"`
+}
+
+// LoadSessionFinderConfig reads config from JSON file.
+func LoadSessionFinderConfig(path string) (*SessionFinderConfig, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var cfg SessionFinderConfig
+	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// RunSessionBlockFinder waits for the session start blocks and logs them.
+func RunSessionBlockFinder(configPath string) {
+	cfg, err := LoadSessionFinderConfig(configPath)
+	if err != nil {
+		log.Fatalf("[SessionFinder] load config: %v", err)
+	}
+	poll := time.Duration(cfg.PollIntervalSeconds) * time.Second
+	short, long, err := FindSessionBlocks(cfg.NodeURL, cfg.ApiKey, poll)
+	if err != nil {
+		log.Fatalf("[SessionFinder] find blocks: %v", err)
+	}
+	log.Printf("[SessionFinder] ShortSessionStarted at height %d", short)
+	log.Printf("[SessionFinder] LongSessionStarted at height %d", long)
+}
+
+// RunSessionBlockFinderWithConfig runs the session finder using an already loaded config.
+func RunSessionBlockFinderWithConfig(cfg *SessionFinderConfig) {
+	poll := time.Duration(cfg.PollIntervalSeconds) * time.Second
+	short, long, err := FindSessionBlocks(cfg.NodeURL, cfg.ApiKey, poll)
+	if err != nil {
+		log.Fatalf("[SessionFinder] find blocks: %v", err)
+	}
+	log.Printf("[SessionFinder] ShortSessionStarted at height %d", short)
+	log.Printf("[SessionFinder] LongSessionStarted at height %d", long)
 }
