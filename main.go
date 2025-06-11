@@ -42,6 +42,7 @@ const (
 var (
 	db             *sql.DB
 	stakeThreshold = 10000.0
+	resultTmpl     *template.Template
 )
 
 type Session struct {
@@ -98,6 +99,7 @@ func main() {
 	createSessionTable()
 	createSnapshotTable()
 	fetchStakeThreshold()
+	resultTmpl = mustLoadTemplate("templates/result.html")
 	exportWhitelist()
 
 	http.Handle("/", http.FileServer(http.Dir("static")))
@@ -494,9 +496,12 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[CALLBACK] Rendering HTML: Headline=%s, Message=%s", data.Headline, data.Message)
-	tmpl := mustLoadTemplate("templates/result.html")
+	if resultTmpl == nil {
+		resultTmpl = mustLoadTemplate("templates/result.html")
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err = tmpl.Execute(w, data)
+	w.WriteHeader(http.StatusOK)
+	err = resultTmpl.Execute(w, data)
 	if err != nil {
 		log.Printf("[CALLBACK][ERROR] Template rendering failed: %v", err)
 		http.Error(w, "Template error: "+err.Error(), 500)
