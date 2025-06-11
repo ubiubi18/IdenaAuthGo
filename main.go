@@ -461,13 +461,9 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`
 <html>
-  <head>
-    <title>Sign-in Error</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-  </head>
   <body>
-    <h2>❌ Invalid or expired sign-in token</h2>
-    <p>Please try logging in again.</p>
+    <h1>Sign-in failed</h1>
+    <p>Your token was invalid or expired. Please try again.</p>
   </body>
 </html>
 `))
