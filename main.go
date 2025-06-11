@@ -461,6 +461,7 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[CALLBACK] Rendering HTML: Headline=%s, Message=%s", data.Headline, data.Message)
 	tmpl := mustLoadTemplate("templates/result.html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err = tmpl.Execute(w, data)
 	if err != nil {
 		log.Printf("[CALLBACK][ERROR] Template rendering failed: %v", err)
