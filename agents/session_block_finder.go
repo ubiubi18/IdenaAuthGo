@@ -103,7 +103,6 @@ func RunSessionBlockFinder(configPath string) {
 	log.Printf("[SessionFinder] Short session started at block %d", short)
 	log.Printf("[SessionFinder] Long session started at block %d", long)
 	log.Printf("[SessionFinder] Short answer window: %d-%d", short, short+5)
-=======
 	"strings"
 	"time"
 )
