@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>{{.Headline}}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="5; url={{.BaseUrl}}/" />
     <style>
         body { font-family: Arial, sans-serif; background: #f8fafc; color: #333; text-align: center; margin: 0; padding: 0;}
         .container { max-width: 400px; margin: 5% auto; padding: 2rem; background: #fff; border-radius: 18px; box-shadow: 0 2px 24px #e0e0e0;}
@@ -23,5 +24,12 @@
         </div>
     </div>
 </body>
+<script>
+  // Attempt to close the window when opened inside the Idena app
+  if (window.opener) {
+    window.opener.postMessage('idena-auth-complete', '*');
+    setTimeout(function() { window.close(); }, 1500);
+  }
+</script>
 </html>
 
