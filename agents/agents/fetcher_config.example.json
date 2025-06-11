@@ -1,7 +1,0 @@
-{
-  "interval_minutes": 5,
-  "node_url": "http://127.0.0.1:9009/",
-  "api_key": "<YOUR_IDENA_NODE_API_KEY>",
-  "snapshot_file": "./data/snapshot.json",
-  "address_list_file": "./data/address_list.txt"
-}
