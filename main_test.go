@@ -111,3 +111,21 @@ func TestStartSessionHandlerHealthCheck(t *testing.T) {
 		t.Fatalf("expected body 'ok', got %q", body)
 	}
 }
+
+func TestStartSessionHandlerMissingToken(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/auth/v1/start-session?address=0xabc", nil)
+	rr := httptest.NewRecorder()
+	startSessionHandler(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestStartSessionHandlerMissingAddress(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/auth/v1/start-session?token=123", nil)
+	rr := httptest.NewRecorder()
+	startSessionHandler(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
