@@ -376,8 +376,9 @@ func startSessionHandler(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
 		addr := r.URL.Query().Get("address")
 		if token == "" || addr == "" {
-			log.Printf("[NONCE_ENDPOINT][GET] Missing token or address")
-			http.Error(w, "Bad request", http.StatusBadRequest)
+			log.Println("[NONCE_ENDPOINT][GET] Empty params – returning 200 OK for health-check")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
 			return
 		}
 		nonce := "signin-" + randHex(16)

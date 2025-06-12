@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -94,5 +96,18 @@ func TestGetIdentityFallback(t *testing.T) {
 	}
 	if calls != 3 {
 		t.Fatalf("expected 3 calls, got %d", calls)
+	}
+}
+
+func TestStartSessionHandlerHealthCheck(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/auth/v1/start-session", nil)
+	rr := httptest.NewRecorder()
+	startSessionHandler(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	body := strings.TrimSpace(rr.Body.String())
+	if body != "ok" {
+		t.Fatalf("expected body 'ok', got %q", body)
 	}
 }
