@@ -336,29 +336,25 @@ func signinHandler(w http.ResponseWriter, r *http.Request) {
 
 // Handle nonce requests and log all body info
 func startSessionHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[DEBUG] %s %s", r.Method, r.URL.Path)
+	bodyBytes, _ := io.ReadAll(r.Body)
+	log.Printf("[DEBUG] Body: %s", string(bodyBytes))
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 	log.Printf("[NONCE_ENDPOINT] Called: %s %s", r.Method, r.URL.Path)
 	switch r.Method {
 	case http.MethodPost:
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Printf("[NONCE_ENDPOINT][POST] Failed to read body: %v", err)
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		log.Printf("[NONCE_ENDPOINT][POST] Request body: %s", string(body))
-		r.Body = io.NopCloser(bytes.NewBuffer(body)) // Allow reuse
-
 		var req struct {
 			Token   string `json:"token"`
 			Address string `json:"address"`
 		}
-		if err := json.NewDecoder(bytes.NewReader(body)).Decode(&req); err != nil {
+		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&req); err != nil {
 			log.Printf("[NONCE_ENDPOINT][POST] Invalid body: %v", err)
 			writeError(w, "Invalid request")
 			return
 		}
 		nonce := "signin-" + randHex(16)
-		_, err = db.Exec("UPDATE sessions SET address=?, nonce=? WHERE token=?", req.Address, nonce, req.Token)
+		_, err := db.Exec("UPDATE sessions SET address=?, nonce=? WHERE token=?", req.Address, nonce, req.Token)
 		if err != nil {
 			log.Printf("[NONCE_ENDPOINT][POST] DB error: %v", err)
 			writeError(w, "DB error")
@@ -407,10 +403,12 @@ func startSessionHandler(w http.ResponseWriter, r *http.Request) {
 
 // Authenticate nonce signature
 func authenticateHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[AUTH][RAW] %s %s", r.Method, r.URL.String())
+	log.Printf("[DEBUG] %s %s", r.Method, r.URL.Path)
 	bodyBytes, _ := io.ReadAll(r.Body)
-	log.Printf("[AUTH][BODY] %s", string(bodyBytes))
+	log.Printf("[DEBUG] Body: %s", string(bodyBytes))
 	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	log.Printf("[AUTH][RAW] %s %s", r.Method, r.URL.String())
 	var req struct {
 		Token     string `json:"token"`
 		Signature string `json:"signature"`
@@ -454,9 +452,15 @@ func authenticateHandler(w http.ResponseWriter, r *http.Request) {
 
 // Show result, log User-Agent, all params
 func callbackHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[DEBUG] %s %s", r.Method, r.URL.Path)
+	bodyBytes, _ := io.ReadAll(r.Body)
+	log.Printf("[DEBUG] Body: %s", string(bodyBytes))
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 	token := r.URL.Query().Get("token")
 	log.Printf("[CALLBACK] Request params: %v", r.URL.Query())
 	log.Printf("[CALLBACK] User-Agent: %s", r.Header.Get("User-Agent"))
+	log.Printf("[CALLBACK] Token: %s", token)
 	row := db.QueryRow("SELECT address, authenticated, identity_state, stake FROM sessions WHERE token=?", token)
 	var address, state string
 	var authenticated int
@@ -482,6 +486,7 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[CALLBACK] Session data: addr=%s auth=%d state=%s stake=%.3f", address, authenticated, state, stake)
 	log.Printf("[CALLBACK] Rendering result for address: %s, state: %s, stake: %.3f", address, state, stake)
 
 	data := struct {
