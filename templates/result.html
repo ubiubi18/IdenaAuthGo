@@ -15,9 +15,7 @@
 <body>
     <div class="container">
         <h1>{{.Headline}}</h1>
-        {{if .Address}}
-        <p><b>Address:</b> {{.Address}}</p>
-        {{end}}
+        <p><b>Address:</b> {{if .Address}}{{.Address}}{{else}}N/A{{end}}</p>
         <p><b>Status:</b> {{if .State}}{{.State}}{{else}}Unknown{{end}}</p>
         <p><b>Stake:</b> {{printf "%.3f" .Stake}}</p>
         <p>{{safeHTML .Reason}}</p>
