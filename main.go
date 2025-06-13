@@ -124,7 +124,7 @@ func main() {
 	createPenaltyTable()
 	epoch, thr, err := fetchEpochData()
 	if err != nil {
-		log.Fatalf("Failed to fetch epoch data: %v", err)
+		log.Printf("WARNING: Failed to fetch epoch data: %v (will continue...)", err)
 	}
 	stakeThreshold = thr
 	currentEpoch = getConfigInt("current_epoch")
