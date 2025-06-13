@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -43,6 +44,10 @@ var (
 	db             *sql.DB
 	stakeThreshold = 10000.0
 	resultTmpl     *template.Template
+
+	wlMu             sync.RWMutex
+	currentWhitelist []string
+	currentEpoch     int
 )
 
 type Session struct {
@@ -80,28 +85,27 @@ func sanitizeBaseURL(u string) string {
 	return u
 }
 
-func fetchStakeThreshold() {
+func fetchEpochData() (int, float64, error) {
 	url := idenaRpcUrl + "/api/Epoch/Last"
 	if IDENA_RPC_KEY != "" {
 		url += "?apikey=" + IDENA_RPC_KEY
 	}
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Printf("[THRESHOLD] fetch error: %v", err)
-		return
+		return 0, 0, err
 	}
 	defer resp.Body.Close()
 	var result struct {
 		Result struct {
+			Epoch     int    `json:"epoch"`
 			Threshold string `json:"discriminationStakeThreshold"`
 		} `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err == nil {
-		if v, err := strconv.ParseFloat(result.Result.Threshold, 64); err == nil {
-			stakeThreshold = v
-			log.Printf("[THRESHOLD] Updated stake threshold: %.3f", stakeThreshold)
-		}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, 0, err
 	}
+	thr, _ := strconv.ParseFloat(result.Result.Threshold, 64)
+	return result.Result.Epoch, thr, nil
 }
 
 func main() {
@@ -115,16 +119,38 @@ func main() {
 	defer db.Close()
 	createSessionTable()
 	createSnapshotTable()
-	fetchStakeThreshold()
+	createConfigTable()
+	epoch, thr, err := fetchEpochData()
+	if err != nil {
+		log.Fatalf("Failed to fetch epoch data: %v", err)
+	}
+	stakeThreshold = thr
+	currentEpoch = getConfigInt("current_epoch")
+	if currentEpoch != epoch {
+		currentEpoch = epoch
+		if err := buildEpochWhitelist(epoch, thr); err != nil {
+			log.Printf("initial whitelist build: %v", err)
+		}
+		setConfigInt("current_epoch", epoch)
+	} else {
+		if _, err := getWhitelist(); err != nil {
+			if err := buildEpochWhitelist(epoch, thr); err != nil {
+				log.Printf("whitelist load failed: %v", err)
+			}
+		}
+	}
 	resultTmpl = mustLoadTemplate("templates/result.html")
-	exportWhitelist()
+
+	go watchEpochChanges()
 
 	http.Handle("/", http.FileServer(http.Dir("static")))
 	http.HandleFunc("/signin", signinHandler)
 	http.HandleFunc("/auth/v1/start-session", startSessionHandler)
 	http.HandleFunc("/auth/v1/authenticate", authenticateHandler)
 	http.HandleFunc("/callback", callbackHandler)
-	http.HandleFunc("/whitelist", whitelistHandler)
+	http.HandleFunc("/whitelist", whitelistCurrentHandler)
+	http.HandleFunc("/whitelist/current", whitelistCurrentHandler)
+	http.HandleFunc("/whitelist/epoch/", whitelistEpochHandler)
 	http.HandleFunc("/whitelist/check", whitelistCheckHandler)
 	http.HandleFunc("/merkle_root", merkleRootHandler)
 	http.HandleFunc("/merkle_proof", merkleProofHandler)
@@ -183,6 +209,32 @@ func createSnapshotTable() {
 	}
 }
 
+func createConfigTable() {
+	_, err := db.Exec(`
+        CREATE TABLE IF NOT EXISTS config (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )`)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func getConfigInt(key string) int {
+	row := db.QueryRow("SELECT value FROM config WHERE key=?", key)
+	var v string
+	if err := row.Scan(&v); err == nil {
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
+		}
+	}
+	return 0
+}
+
+func setConfigInt(key string, val int) {
+	_, _ = db.Exec("INSERT OR REPLACE INTO config(key,value) VALUES(?,?)", key, strconv.Itoa(val))
+}
+
 func recordIdentitySnapshot(address, state string, stake float64) {
 	_, err := db.Exec(`INSERT INTO identity_snapshots(address,state,stake,ts) VALUES(?,?,?,?)`,
 		address, state, stake, time.Now().Unix())
@@ -196,19 +248,23 @@ func cleanupOldSnapshots() {
 }
 
 func getWhitelist() ([]string, error) {
-	rows, err := db.Query(`SELECT address FROM identity_snapshots WHERE ts >= ? AND (state='Human' OR state='Verified' OR state='Newbie') AND stake>=? GROUP BY address`,
-		time.Now().AddDate(0, 0, -30).Unix(), stakeThreshold)
+	wlMu.RLock()
+	list := append([]string(nil), currentWhitelist...)
+	wlMu.RUnlock()
+	if len(list) > 0 {
+		return list, nil
+	}
+	path := fmt.Sprintf("data/whitelist_epoch_%d.json", currentEpoch)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var list []string
-	for rows.Next() {
-		var addr string
-		if err := rows.Scan(&addr); err == nil {
-			list = append(list, addr)
-		}
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, err
 	}
+	wlMu.Lock()
+	currentWhitelist = append([]string(nil), list...)
+	wlMu.Unlock()
 	sort.Strings(list)
 	return list, nil
 }
@@ -306,6 +362,108 @@ func verifyMerkleProof(address string, proof []ProofStep, root string) bool {
 	return hex.EncodeToString(cur) == root
 }
 
+type epochIdentity struct {
+	Address string  `json:"address"`
+	State   string  `json:"state"`
+	Stake   float64 `json:"stake,string"`
+}
+
+func fetchEpochIdentities(epoch int) ([]epochIdentity, error) {
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "dna_epochIdentities",
+		"params":  []interface{}{epoch, 0},
+		"id":      1,
+	}
+	if IDENA_RPC_KEY != "" {
+		req["key"] = IDENA_RPC_KEY
+	}
+	body, _ := json.Marshal(req)
+	resp, err := http.Post(idenaRpcUrl, "application/json", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Result []struct {
+			Address string `json:"address"`
+			State   string `json:"state"`
+			Stake   string `json:"stake"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	list := make([]epochIdentity, 0, len(out.Result))
+	for _, r := range out.Result {
+		st, _ := strconv.ParseFloat(r.Stake, 64)
+		list = append(list, epochIdentity{Address: r.Address, State: r.State, Stake: st})
+	}
+	return list, nil
+}
+
+func isEligibleSnapshot(state string, stake float64, threshold float64) bool {
+	if state == "Human" && stake >= threshold {
+		return true
+	}
+	if (state == "Verified" || state == "Newbie") && stake >= 10000 {
+		return true
+	}
+	return false
+}
+
+func buildEpochWhitelist(epoch int, threshold float64) error {
+	ids, err := fetchEpochIdentities(epoch)
+	if err != nil {
+		return err
+	}
+	var list []string
+	for _, id := range ids {
+		if isEligibleSnapshot(id.State, id.Stake, threshold) {
+			list = append(list, id.Address)
+		}
+	}
+	sort.Strings(list)
+	path := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
+	data, _ := json.MarshalIndent(list, "", "  ")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return err
+	}
+	wlMu.Lock()
+	currentWhitelist = list
+	wlMu.Unlock()
+	log.Printf("[WHITELIST] built for epoch %d with %d addresses", epoch, len(list))
+	return nil
+}
+
+func watchEpochChanges() {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for {
+		epoch, thr, err := fetchEpochData()
+		if err != nil {
+			log.Printf("[EPOCH] fetch error: %v", err)
+		} else {
+			wlMu.RLock()
+			cur := currentEpoch
+			wlMu.RUnlock()
+			if epoch != cur {
+				log.Printf("[EPOCH] new epoch %d detected", epoch)
+				stakeThreshold = thr
+				if err := buildEpochWhitelist(epoch, thr); err != nil {
+					log.Printf("[EPOCH] build whitelist: %v", err)
+				} else {
+					wlMu.Lock()
+					currentEpoch = epoch
+					wlMu.Unlock()
+					setConfigInt("current_epoch", epoch)
+				}
+			}
+		}
+		<-ticker.C
+	}
+}
+
 func exportWhitelist() {
 	list, err := getWhitelist()
 	if err != nil {
@@ -317,7 +475,8 @@ func exportWhitelist() {
 		"addresses":   list,
 	}
 	b, _ := json.MarshalIndent(data, "", "  ")
-	if err := os.WriteFile("data/whitelist.json", b, 0644); err != nil {
+	path := fmt.Sprintf("data/whitelist_epoch_%d.json", currentEpoch)
+	if err := os.WriteFile(path, b, 0644); err != nil {
 		log.Printf("[WHITELIST] failed to write whitelist.json: %v", err)
 	}
 }
@@ -560,6 +719,37 @@ func whitelistHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]interface{}{"addresses": list})
+}
+
+func whitelistCurrentHandler(w http.ResponseWriter, r *http.Request) {
+	list, err := getWhitelist()
+	if err != nil {
+		http.Error(w, "server error", 500)
+		return
+	}
+	writeJSON(w, map[string]interface{}{"addresses": list, "epoch": currentEpoch})
+}
+
+func whitelistEpochHandler(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	epochStr := parts[len(parts)-1]
+	epoch, err := strconv.Atoi(epochStr)
+	if err != nil {
+		http.Error(w, "bad epoch", 400)
+		return
+	}
+	path := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	var list []string
+	if err := json.Unmarshal(data, &list); err != nil {
+		http.Error(w, "server error", 500)
+		return
+	}
+	writeJSON(w, map[string]interface{}{"addresses": list, "epoch": epoch})
 }
 
 // Check if address is eligible
