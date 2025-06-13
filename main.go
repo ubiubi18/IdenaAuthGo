@@ -504,18 +504,21 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Headline string
-		Message  string
+		Address  string
+		State    string
+		Stake    float64
+		Reason   string
 		BaseUrl  string
-	}{
-		BaseUrl: BASE_URL,
-	}
+	}{BaseUrl: BASE_URL}
 
 	if err != nil {
-		log.Printf("[CALLBACK] Token not found: %s", token)
 		data.Headline = "Session not found"
-		data.Message = "Your login session could not be found or has expired.<br>Please try logging in again."
+		data.Reason = "Your login session could not be found or has expired.<br>Please try logging in again."
+		log.Printf("[CALLBACK][DENIED] session not found for token %s", token)
 	} else {
-		log.Printf("[CALLBACK] Session data: addr=%s auth=%d state=%s stake=%.3f", address, authenticated, state, stake)
+		data.Address = address
+		data.State = state
+		data.Stake = stake
 		eligible := authenticated == 1
 		var reason string
 		if eligible {
@@ -528,26 +531,24 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 				reason = r
 			}
 		}
-
+		data.Reason = reason
 		if eligible {
 			data.Headline = "Access granted!"
-			data.Message = fmt.Sprintf(`Address: <b>%s</b><br>Status: <b>%s</b><br>Stake: <b>%.3f</b><br>%s`, address, state, stake, reason)
+			log.Printf("[CALLBACK][GRANTED] %s %s %.3f", address, state, stake)
 		} else {
 			data.Headline = "Access denied!"
-			data.Message = fmt.Sprintf(`Address: <b>%s</b><br>Status: <b>%s</b><br>Stake: <b>%.3f</b><br>Reason: %s`, address, state, stake, reason)
+			log.Printf("[CALLBACK][DENIED] %s %s %.3f: %s", address, state, stake, reason)
 		}
 	}
 
-	log.Printf("[CALLBACK] Rendering HTML: Headline=%s, Message=%s", data.Headline, data.Message)
+	log.Printf("[CALLBACK] Rendering result page: %s", data.Headline)
 	if resultTmpl == nil {
 		resultTmpl = mustLoadTemplate("templates/result.html")
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	err = resultTmpl.Execute(w, data)
-	if err != nil {
+	if err := resultTmpl.Execute(w, data); err != nil {
 		log.Printf("[CALLBACK][ERROR] Template rendering failed: %v", err)
-		http.Error(w, "Template error: "+err.Error(), 500)
+		fmt.Fprintf(w, "<html><body><h1>%s</h1><p>%s</p><a href=\"%s\">Continue</a></body></html>", data.Headline, data.Reason, BASE_URL)
 	}
 }
 

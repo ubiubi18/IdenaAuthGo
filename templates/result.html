@@ -15,9 +15,12 @@
 <body>
     <div class="container">
         <h1>{{.Headline}}</h1>
-        <div>{{
-            safeHTML .Message
-        }}</div>
+        {{if .Address}}
+        <p><b>Address:</b> {{.Address}}</p>
+        {{end}}
+        <p><b>Status:</b> {{if .State}}{{.State}}{{else}}Unknown{{end}}</p>
+        <p><b>Stake:</b> {{printf "%.3f" .Stake}}</p>
+        <p>{{safeHTML .Reason}}</p>
         <a href="{{.BaseUrl}}" class="btn">Continue to proofofhuman.work</a>
     </div>
 </body>
