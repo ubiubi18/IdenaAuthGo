@@ -120,6 +120,7 @@ func main() {
 	createSessionTable()
 	createSnapshotTable()
 	createConfigTable()
+	createEpochTable()
 	epoch, thr, err := fetchEpochData()
 	if err != nil {
 		log.Fatalf("Failed to fetch epoch data: %v", err)
@@ -154,6 +155,8 @@ func main() {
 	http.HandleFunc("/whitelist/check", whitelistCheckHandler)
 	http.HandleFunc("/merkle_root", merkleRootHandler)
 	http.HandleFunc("/merkle_proof", merkleProofHandler)
+	http.HandleFunc("/api/Epoch/Last", epochLastHandler)
+	http.HandleFunc("/api/Identity/", identityHandler)
 
 	go cleanupExpiredSessions()
 	log.Printf("Server running at http://localhost%s", listenAddr)
@@ -214,6 +217,19 @@ func createConfigTable() {
         CREATE TABLE IF NOT EXISTS config (
             key TEXT PRIMARY KEY,
             value TEXT
+        )`)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func createEpochTable() {
+	_, err := db.Exec(`
+        CREATE TABLE IF NOT EXISTS epoch (
+            epoch INTEGER,
+            validationTime INTEGER,
+            discriminationStakeThreshold REAL,
+            ts INTEGER
         )`)
 	if err != nil {
 		log.Fatal(err)
@@ -937,5 +953,275 @@ func writeError(w http.ResponseWriter, msg string) {
 	writeJSON(w, map[string]interface{}{
 		"success": false,
 		"error":   msg,
+	})
+}
+
+// callLocalRPC performs a JSON-RPC POST request to the configured Idena node.
+// The response body is decoded into out.
+func callLocalRPC(method string, params interface{}, out interface{}) error {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  method,
+		"params":  params,
+		"id":      1,
+	}
+	if IDENA_RPC_KEY != "" {
+		reqBody["key"] = IDENA_RPC_KEY
+	}
+	b, _ := json.Marshal(reqBody)
+	req, err := http.NewRequest(http.MethodPost, idenaRpcUrl, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("rpc status %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// getCachedEpoch retrieves the most recent epoch info from the database.
+func getCachedEpoch() (int, int64, float64, int64, bool) {
+	row := db.QueryRow("SELECT epoch, validationTime, discriminationStakeThreshold, ts FROM epoch ORDER BY ts DESC LIMIT 1")
+	var epoch int
+	var vt int64
+	var thr float64
+	var ts int64
+	if err := row.Scan(&epoch, &vt, &thr, &ts); err == nil {
+		return epoch, vt, thr, ts, true
+	}
+	return 0, 0, 0, 0, false
+}
+
+// saveEpoch stores epoch info in the database.
+func saveEpoch(epoch int, vt int64, thr float64) {
+	_, _ = db.Exec("INSERT INTO epoch(epoch,validationTime,discriminationStakeThreshold,ts) VALUES(?,?,?,?)", epoch, vt, thr, time.Now().Unix())
+}
+
+// fetchEpochFromNode queries the local node for epoch information.
+func fetchEpochFromNode() (int, int64, float64, error) {
+	var resp struct {
+		Result struct {
+			Epoch          int    `json:"epoch"`
+			ValidationTime string `json:"validationTime"`
+			Threshold      string `json:"discriminationStakeThreshold"`
+		} `json:"result"`
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := callLocalRPC("bcn_lastBlock", []interface{}{}, &resp); err != nil {
+		return 0, 0, 0, err
+	}
+	if resp.Error != nil && resp.Error.Message != "" {
+		return 0, 0, 0, fmt.Errorf(resp.Error.Message)
+	}
+	vt, _ := time.Parse(time.RFC3339, resp.Result.ValidationTime)
+	thr, _ := strconv.ParseFloat(resp.Result.Threshold, 64)
+	return resp.Result.Epoch, vt.Unix(), thr, nil
+}
+
+// fetchEpochFromAPI gets epoch info from the public API.
+func fetchEpochFromAPI() (int, int64, float64, error) {
+	resp, err := http.Get(fallbackApiUrl + "/api/Epoch/Last")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, 0, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	var apiResp struct {
+		Result struct {
+			Epoch          int    `json:"epoch"`
+			ValidationTime string `json:"validationTime"`
+			Threshold      string `json:"discriminationStakeThreshold"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return 0, 0, 0, err
+	}
+	vt, _ := time.Parse(time.RFC3339, apiResp.Result.ValidationTime)
+	thr, _ := strconv.ParseFloat(apiResp.Result.Threshold, 64)
+	return apiResp.Result.Epoch, vt.Unix(), thr, nil
+}
+
+// updateEpochCache tries to refresh epoch info from the node, falling back to the public API.
+func updateEpochCache() (int, int64, float64, error) {
+	epoch, vt, thr, err := fetchEpochFromNode()
+	if err != nil || epoch == 0 {
+		epoch, vt, thr, err = fetchEpochFromAPI()
+	}
+	if err == nil && epoch != 0 {
+		saveEpoch(epoch, vt, thr)
+	}
+	return epoch, vt, thr, err
+}
+
+// getCachedIdentity returns the latest cached identity record for an address.
+func getCachedIdentity(addr string) (string, float64, int64, bool) {
+	row := db.QueryRow("SELECT state, stake, ts FROM identity_snapshots WHERE address=? ORDER BY ts DESC LIMIT 1", addr)
+	var state string
+	var stake float64
+	var ts int64
+	if err := row.Scan(&state, &stake, &ts); err == nil {
+		return state, stake, ts, true
+	}
+	return "", 0, 0, false
+}
+
+// fetchIdentityFromNode queries the local node for an identity.
+func fetchIdentityFromNode(addr string) (string, float64, error) {
+	var resp struct {
+		Result struct {
+			State string  `json:"state"`
+			Stake float64 `json:"stake,string"`
+		} `json:"result"`
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := callLocalRPC("dna_identity", []interface{}{addr}, &resp); err != nil {
+		return "", 0, err
+	}
+	if resp.Error != nil && resp.Error.Message != "" {
+		return "", 0, fmt.Errorf(resp.Error.Message)
+	}
+	if resp.Result.State == "" {
+		return "", 0, fmt.Errorf("empty state")
+	}
+	return resp.Result.State, resp.Result.Stake, nil
+}
+
+// fetchIdentityFromAPI queries the public API for identity state and stake.
+func fetchIdentityFromAPI(addr string) (string, float64, error) {
+	var state string
+	resp, err := http.Get(fallbackApiUrl + "/api/Identity/" + addr)
+	if err == nil && resp.StatusCode == http.StatusOK {
+		var apiResp struct {
+			Result struct {
+				State string `json:"state"`
+			} `json:"result"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&apiResp)
+		state = apiResp.Result.State
+	}
+	resp2, err2 := http.Get(fallbackApiUrl + "/api/Address/" + addr)
+	var stake float64
+	if err2 == nil && resp2.StatusCode == http.StatusOK {
+		var addrResp struct {
+			Result struct {
+				Stake string `json:"stake"`
+			} `json:"result"`
+		}
+		_ = json.NewDecoder(resp2.Body).Decode(&addrResp)
+		stake, _ = strconv.ParseFloat(addrResp.Result.Stake, 64)
+	}
+	if state == "" && stake == 0 {
+		return "", 0, fmt.Errorf("api error")
+	}
+	return state, stake, nil
+}
+
+// updateIdentityCache refreshes the cached identity information.
+func updateIdentityCache(addr string) (string, float64, error) {
+	state, stake, err := fetchIdentityFromNode(addr)
+	if err != nil || state == "" {
+		state, stake, err = fetchIdentityFromAPI(addr)
+	}
+	if err == nil && state != "" {
+		recordIdentitySnapshot(addr, state, stake)
+	}
+	return state, stake, err
+}
+
+// epochLastHandler serves the /api/Epoch/Last endpoint.
+func epochLastHandler(w http.ResponseWriter, r *http.Request) {
+	epoch, vt, thr, ts, ok := getCachedEpoch()
+	if ok && time.Since(time.Unix(ts, 0)) < 5*time.Minute {
+		writeJSON(w, map[string]interface{}{
+			"result": map[string]interface{}{
+				"epoch":                        epoch,
+				"validationTime":               time.Unix(vt, 0).UTC().Format(time.RFC3339),
+				"discriminationStakeThreshold": fmt.Sprintf("%.8f", thr),
+			},
+		})
+		return
+	}
+	if ok {
+		go updateEpochCache()
+		writeJSON(w, map[string]interface{}{
+			"result": map[string]interface{}{
+				"epoch":                        epoch,
+				"validationTime":               time.Unix(vt, 0).UTC().Format(time.RFC3339),
+				"discriminationStakeThreshold": fmt.Sprintf("%.8f", thr),
+			},
+		})
+		return
+	}
+	epoch, vt, thr, err := updateEpochCache()
+	if err != nil {
+		writeJSON(w, map[string]string{"error": "failed to fetch epoch"})
+		return
+	}
+	writeJSON(w, map[string]interface{}{
+		"result": map[string]interface{}{
+			"epoch":                        epoch,
+			"validationTime":               time.Unix(vt, 0).UTC().Format(time.RFC3339),
+			"discriminationStakeThreshold": fmt.Sprintf("%.8f", thr),
+		},
+	})
+}
+
+// identityHandler serves the /api/Identity/{address} endpoint.
+func identityHandler(w http.ResponseWriter, r *http.Request) {
+	addr := strings.TrimPrefix(r.URL.Path, "/api/Identity/")
+	addr = strings.ToLower(addr)
+	if addr == "" {
+		http.Error(w, "bad address", http.StatusBadRequest)
+		return
+	}
+	state, stake, ts, ok := getCachedIdentity(addr)
+	if ok && time.Since(time.Unix(ts, 0)) < 30*24*time.Hour {
+		if time.Since(time.Unix(ts, 0)) > 24*time.Hour {
+			go updateIdentityCache(addr)
+		}
+		writeJSON(w, map[string]interface{}{
+			"result": map[string]interface{}{
+				"address": addr,
+				"state":   state,
+				"stake":   fmt.Sprintf("%.8f", stake),
+			},
+		})
+		return
+	}
+	state, stake, err := updateIdentityCache(addr)
+	if err != nil && ok {
+		writeJSON(w, map[string]interface{}{
+			"result": map[string]interface{}{
+				"address": addr,
+				"state":   state,
+				"stake":   fmt.Sprintf("%.8f", stake),
+			},
+		})
+		return
+	}
+	if err != nil {
+		writeJSON(w, map[string]string{"error": "failed to fetch identity"})
+		return
+	}
+	writeJSON(w, map[string]interface{}{
+		"result": map[string]interface{}{
+			"address": addr,
+			"state":   state,
+			"stake":   fmt.Sprintf("%.8f", stake),
+		},
 	})
 }
