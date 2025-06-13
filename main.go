@@ -432,7 +432,13 @@ func authenticateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("[AUTH] Invalid request body: %v", err)
-		writeError(w, "Bad request")
+		writeJSON(w, map[string]interface{}{
+			"success": true,
+			"data": map[string]interface{}{
+				"authenticated": false,
+				"reason":        "Invalid request format.",
+			},
+		})
 		return
 	}
 
@@ -440,29 +446,41 @@ func authenticateHandler(w http.ResponseWriter, r *http.Request) {
 	var nonce, address string
 	if err := row.Scan(&nonce, &address); err != nil {
 		log.Printf("[AUTH] Token not found: %s", req.Token)
-		writeError(w, "Session not found")
+		writeJSON(w, map[string]interface{}{
+			"success": true,
+			"data": map[string]interface{}{
+				"authenticated": false,
+				"reason":        "Session not found.",
+			},
+		})
 		return
 	}
 	log.Printf("[AUTH] Authenticating address: %s for token: %s with nonce: %s", address, req.Token, nonce)
 
-	authenticated := verifySignature(nonce, address, req.Signature)
-	if !authenticated {
+	sigOK := verifySignature(nonce, address, req.Signature)
+	if !sigOK {
 		log.Printf("[AUTH] Signature verification failed for address %s", address)
 	}
 
 	state, stake := getIdentity(address)
-	isEligible := authenticated && (state == "Newbie" || state == "Verified" || state == "Human") && stake >= stakeThreshold
-	log.Printf("[AUTH] Identity state: %s, stake: %.3f, eligible: %t", state, stake, isEligible)
+	eligible, reason := evaluateEligibility(sigOK, state, stake)
+	log.Printf("[AUTH] Identity state: %s, stake: %.3f, eligible: %t", state, stake, eligible)
 
-	_, _ = db.Exec(`UPDATE sessions SET authenticated=?, identity_state=?, stake=? WHERE token=?`,
-		boolToInt(isEligible), state, stake, req.Token)
+	_, err := db.Exec(`UPDATE sessions SET authenticated=?, identity_state=?, stake=? WHERE token=?`,
+		boolToInt(eligible), state, stake, req.Token)
+	if err != nil {
+		log.Printf("[AUTH] DB error updating session: %v", err)
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
 	recordIdentitySnapshot(address, state, stake)
 	exportWhitelist()
 
 	writeJSON(w, map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"authenticated": isEligible,
+			"authenticated": eligible,
+			"reason":        reason,
 		},
 	})
 }
@@ -496,24 +514,28 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[CALLBACK] Token not found: %s", token)
 		data.Headline = "Session not found"
 		data.Message = "Your login session could not be found or has expired.<br>Please try logging in again."
-	} else if authenticated == 1 {
-		log.Printf("[CALLBACK] Session data: addr=%s auth=%d state=%s stake=%.3f", address, authenticated, state, stake)
-		data.Headline = "Access granted!"
-		data.Message = fmt.Sprintf(`Address: <b>%s</b><br>Status: <b>%s</b><br>Stake: <b>%.3f</b>`, address, state, stake)
 	} else {
 		log.Printf("[CALLBACK] Session data: addr=%s auth=%d state=%s stake=%.3f", address, authenticated, state, stake)
-		why := ""
-		if state == "" {
-			why = "No identity found for this address."
-		} else if !(state == "Human" || state == "Verified" || state == "Newbie") {
-			why = "Identity status: " + state + "."
-		} else if stake < stakeThreshold {
-			why = fmt.Sprintf("Stake too low: %.3f < %.3f", stake, stakeThreshold)
+		eligible := authenticated == 1
+		var reason string
+		if eligible {
+			_, reason = evaluateEligibility(true, state, stake)
 		} else {
-			why = "Unknown reason."
+			ok, r := evaluateEligibility(true, state, stake)
+			if ok {
+				reason = "Invalid signature."
+			} else {
+				reason = r
+			}
 		}
-		data.Headline = "Access denied!"
-		data.Message = fmt.Sprintf(`Address: <b>%s</b><br>Status: <b>%s</b><br>Stake: <b>%.3f</b><br>Reason: %s`, address, state, stake, why)
+
+		if eligible {
+			data.Headline = "Access granted!"
+			data.Message = fmt.Sprintf(`Address: <b>%s</b><br>Status: <b>%s</b><br>Stake: <b>%.3f</b><br>%s`, address, state, stake, reason)
+		} else {
+			data.Headline = "Access denied!"
+			data.Message = fmt.Sprintf(`Address: <b>%s</b><br>Status: <b>%s</b><br>Stake: <b>%.3f</b><br>Reason: %s`, address, state, stake, reason)
+		}
 	}
 
 	log.Printf("[CALLBACK] Rendering HTML: Headline=%s, Message=%s", data.Headline, data.Message)
@@ -677,6 +699,28 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// evaluateEligibility checks signature validity, identity state and stake
+// against the configured threshold. It returns whether the user is eligible
+// and a human readable reason for the result.
+func evaluateEligibility(sigOK bool, state string, stake float64) (bool, string) {
+	reasons := []string{}
+	if !sigOK {
+		reasons = append(reasons, "Invalid signature.")
+	}
+	if state == "" {
+		reasons = append(reasons, "Identity not found or status undefined.")
+	} else if state != "Human" && state != "Verified" && state != "Newbie" {
+		reasons = append(reasons, fmt.Sprintf("Identity state %s is not eligible.", state))
+	}
+	if stake < stakeThreshold {
+		reasons = append(reasons, fmt.Sprintf("Stake too low: %.3f (%.3f required).", stake, stakeThreshold))
+	}
+	if len(reasons) == 0 {
+		return true, "Eligible for login."
+	}
+	return false, strings.Join(reasons, " ")
 }
 
 // Clean up expired sessions regularly
