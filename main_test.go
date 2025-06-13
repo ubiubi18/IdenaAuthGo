@@ -129,3 +129,14 @@ func TestStartSessionHandlerMissingAddress(t *testing.T) {
 		t.Fatalf("expected status 400, got %d", rr.Code)
 	}
 }
+
+func TestSanitizeBaseURL(t *testing.T) {
+	httpsURL := sanitizeBaseURL("http://proofofhuman.work")
+	if httpsURL != "https://proofofhuman.work" {
+		t.Fatalf("expected https URL, got %s", httpsURL)
+	}
+	localURL := sanitizeBaseURL("http://localhost:3030")
+	if localURL != "http://localhost:3030" {
+		t.Fatalf("expected localhost unchanged, got %s", localURL)
+	}
+}
