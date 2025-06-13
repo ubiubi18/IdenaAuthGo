@@ -27,7 +27,6 @@ import (
 
 // Environment variables, with fallback for local/dev usage
 var (
-	BASE_URL      = getenv("BASE_URL", "https://proofofhuman.work")
 	IDENA_RPC_KEY = getenv("IDENA_RPC_KEY", "")
 )
 
@@ -61,6 +60,23 @@ func getenv(key, fallback string) string {
 		return fallback
 	}
 	return val
+}
+
+// sanitizeBaseURL ensures HTTPS is used for non-local hosts
+func sanitizeBaseURL(u string) string {
+	if strings.HasPrefix(u, "http://") {
+		parsed, err := url.Parse(u)
+		if err == nil {
+			host := parsed.Hostname()
+			if host != "localhost" && host != "127.0.0.1" {
+				parsed.Scheme = "https"
+				s := parsed.String()
+				log.Printf("[CONFIG] Forcing HTTPS for BASE_URL: %s -> %s", u, s)
+				return s
+			}
+		}
+	}
+	return u
 }
 
 func fetchStakeThreshold() {
