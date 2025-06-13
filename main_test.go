@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -138,5 +140,61 @@ func TestSanitizeBaseURL(t *testing.T) {
 	localURL := sanitizeBaseURL("http://localhost:3030")
 	if localURL != "http://localhost:3030" {
 		t.Fatalf("expected localhost unchanged, got %s", localURL)
+	}
+}
+
+func setupTestDB(t *testing.T) {
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	createSessionTable()
+	resultTmpl = mustLoadTemplate("templates/result.html")
+}
+
+func TestCallbackHandlerSessionNotFound(t *testing.T) {
+	setupTestDB(t)
+	defer db.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/callback?token=deadbeef", nil)
+	rr := httptest.NewRecorder()
+	callbackHandler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "Session not found") {
+		t.Fatalf("missing not found message")
+	}
+	if !strings.Contains(body, "Address:") || !strings.Contains(body, "Status:") || !strings.Contains(body, "Stake:") {
+		t.Fatalf("output missing address/status/stake block: %s", body)
+	}
+}
+
+func TestCallbackHandlerNotEligible(t *testing.T) {
+	setupTestDB(t)
+	defer db.Close()
+
+	_, err := db.Exec(`INSERT INTO sessions(token,address,authenticated,identity_state,stake,created) VALUES (?,?,?,?,?,?)`,
+		"tok123", "0xabc", 0, "Suspended", 1.0, time.Now().Unix())
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/callback?token=tok123", nil)
+	rr := httptest.NewRecorder()
+	callbackHandler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "Access denied!") {
+		t.Fatalf("expected denied headline")
+	}
+	if !strings.Contains(body, "0xabc") || !strings.Contains(body, "Suspended") {
+		t.Fatalf("missing address or status in body: %s", body)
 	}
 }
