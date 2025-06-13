@@ -483,28 +483,6 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 	var authenticated int
 	var stake float64
 	err := row.Scan(&address, &authenticated, &state, &stake)
-	if err != nil {
-		log.Printf("[CALLBACK] Token not found: %s", token)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`
-<html>
-  <head>
-    <title>Session not found</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-  </head>
-  <body>
-    <h2>❌ Session not found</h2>
-    <p>Your login session could not be found or has expired.<br>
-    Please try logging in again.</p>
-  </body>
-</html>
-`))
-		return
-	}
-
-	log.Printf("[CALLBACK] Session data: addr=%s auth=%d state=%s stake=%.3f", address, authenticated, state, stake)
-	log.Printf("[CALLBACK] Rendering result for address: %s, state: %s, stake: %.3f", address, state, stake)
 
 	data := struct {
 		Headline string
@@ -514,12 +492,28 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 		BaseUrl: BASE_URL,
 	}
 
-	if authenticated == 1 {
+	if err != nil {
+		log.Printf("[CALLBACK] Token not found: %s", token)
+		data.Headline = "Session not found"
+		data.Message = "Your login session could not be found or has expired.<br>Please try logging in again."
+	} else if authenticated == 1 {
+		log.Printf("[CALLBACK] Session data: addr=%s auth=%d state=%s stake=%.3f", address, authenticated, state, stake)
 		data.Headline = "Access granted!"
 		data.Message = fmt.Sprintf(`Address: <b>%s</b><br>Status: <b>%s</b><br>Stake: <b>%.3f</b>`, address, state, stake)
 	} else {
+		log.Printf("[CALLBACK] Session data: addr=%s auth=%d state=%s stake=%.3f", address, authenticated, state, stake)
+		why := ""
+		if state == "" {
+			why = "No identity found for this address."
+		} else if !(state == "Human" || state == "Verified" || state == "Newbie") {
+			why = "Identity status: " + state + "."
+		} else if stake < stakeThreshold {
+			why = fmt.Sprintf("Stake too low: %.3f < %.3f", stake, stakeThreshold)
+		} else {
+			why = "Unknown reason."
+		}
 		data.Headline = "Access denied!"
-		data.Message = fmt.Sprintf(`Address: <b>%s</b><br>Status: <b>%s</b><br>Stake: <b>%.3f</b>`, address, state, stake)
+		data.Message = fmt.Sprintf(`Address: <b>%s</b><br>Status: <b>%s</b><br>Stake: <b>%.3f</b><br>Reason: %s`, address, state, stake, why)
 	}
 
 	log.Printf("[CALLBACK] Rendering HTML: Headline=%s, Message=%s", data.Headline, data.Message)

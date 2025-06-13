@@ -4,13 +4,12 @@
     <meta charset="UTF-8">
     <title>{{.Headline}}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="refresh" content="5; url={{.BaseUrl}}/" />
     <style>
         body { font-family: Arial, sans-serif; background: #f8fafc; color: #333; text-align: center; margin: 0; padding: 0;}
         .container { max-width: 400px; margin: 5% auto; padding: 2rem; background: #fff; border-radius: 18px; box-shadow: 0 2px 24px #e0e0e0;}
         h1 { color: #2e7d32;}
         .error { color: #c62828;}
-        a { color: #1976d2; text-decoration: none;}
+        a.btn { padding: 0.6em 2em; margin-top: 2em; border-radius: 0.3em; background: #3b82f6; color: white; text-decoration: none; display: inline-block; font-size: 1.1em; }
     </style>
 </head>
 <body>
@@ -19,9 +18,7 @@
         <div>{{
             safeHTML .Message
         }}</div>
-        <div style="margin-top:2em;">
-            <a href="{{.BaseUrl}}/signin">Try again</a>
-        </div>
+        <a href="{{.BaseUrl}}" class="btn">Continue to proofofhuman.work</a>
     </div>
 </body>
 <script>
