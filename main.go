@@ -27,6 +27,7 @@ import (
 
 // Environment variables, with fallback for local/dev usage
 var (
+	BASE_URL      = getenv("BASE_URL", "https://proofofhuman.work")
 	IDENA_RPC_KEY = getenv("IDENA_RPC_KEY", "")
 )
 
