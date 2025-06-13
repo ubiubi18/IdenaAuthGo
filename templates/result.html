@@ -25,10 +25,12 @@
     </div>
 </body>
 <script>
-  // Attempt to close the window when opened inside the Idena app
+  // Notify the opener that authentication has finished.
+  // Removed the automatic window.close() to allow users to stay on
+  // this page after login.
   if (window.opener) {
     window.opener.postMessage('idena-auth-complete', '*');
-    setTimeout(function() { window.close(); }, 1500);
+    // setTimeout(function() { window.close(); }, 1500);
   }
 </script>
 </html>
