@@ -23,7 +23,7 @@ func main() {
 		log.Fatalf("save addresses: %v", err)
 	}
 
-	flips, err := whitelist.CheckFlipReports(addrs, "http://localhost:9009", "")
+	flips, err := whitelist.CheckFlipReports(addrs, 0, "http://localhost:9009", "")
 	if err != nil {
 		log.Fatalf("flip check: %v", err)
 	}
