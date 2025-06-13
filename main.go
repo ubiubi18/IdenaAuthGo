@@ -463,6 +463,9 @@ func buildEpochWhitelist(epoch int, threshold float64) error {
 	var list []string
 	for _, id := range ids {
 		if isEligibleSnapshot(id.State, id.Stake, threshold) {
+			if hasFlipReport(epoch, id.Address) {
+				continue
+			}
 			if !getPenaltyStatus(epoch, id.Address) {
 				list = append(list, id.Address)
 			}
@@ -1217,6 +1220,32 @@ func getPenaltyStatus(epoch int, addr string) bool {
 		recordPenalty(epoch, addr)
 	}
 	return penalized
+}
+
+// hasFlipReport checks lastValidationFlags for AtLeastOneFlipReported for the given epoch.
+// 2025-06-13 ticket #42
+func hasFlipReport(epoch int, addr string) bool {
+	var resp struct {
+		Result struct {
+			LastValidationFlags []string `json:"lastValidationFlags"`
+		} `json:"result"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	err := callLocalRPC("dna_identity", []interface{}{addr, epoch}, &resp)
+	if err != nil || resp.Error != nil && resp.Error.Message != "" {
+		if err != nil {
+			log.Printf("[FLIP] rpc %s: %v", addr, err)
+		}
+		return false
+	}
+	for _, f := range resp.Result.LastValidationFlags {
+		if f == "AtLeastOneFlipReported" {
+			return true
+		}
+	}
+	return false
 }
 
 // epochLastHandler serves the /api/Epoch/Last endpoint.

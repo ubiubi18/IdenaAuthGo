@@ -8,7 +8,7 @@ func CheckIdentityStatus(addrs []string, flips map[string]bool, nodeURL, apiKey 
 		if flips[a] {
 			continue
 		}
-		id, err := fetchIdentity(a, nodeURL, apiKey)
+		id, err := fetchIdentity(a, 0, nodeURL, apiKey)
 		if err != nil {
 			return nil, err
 		}

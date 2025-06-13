@@ -2,15 +2,24 @@ package whitelist
 
 // Flip report checker queries each identity and marks those with penalties.
 
-func CheckFlipReports(addrs []string, nodeURL, apiKey string) (map[string]bool, error) {
+// CheckFlipReports queries each identity and marks those with reported flips.
+// If lastValidationFlags contains "AtLeastOneFlipReported", the address is flagged.
+// 2025-06-13 ticket #42
+func CheckFlipReports(addrs []string, epoch int, nodeURL, apiKey string) (map[string]bool, error) {
 	res := make(map[string]bool)
 	for _, a := range addrs {
-		id, err := fetchIdentity(a, nodeURL, apiKey)
+		id, err := fetchIdentity(a, epoch, nodeURL, apiKey)
 		if err != nil {
 			return nil, err
 		}
-		reported := id.Penalty != "" && id.Penalty != "0"
-		res[a] = reported
+		flagged := false
+		for _, f := range id.LastValidationFlags {
+			if f == "AtLeastOneFlipReported" {
+				flagged = true
+				break
+			}
+		}
+		res[a] = flagged
 	}
 	return res, nil
 }
