@@ -564,6 +564,7 @@ func whitelistHandler(w http.ResponseWriter, r *http.Request) {
 // Check if address is eligible
 func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	addr := strings.ToLower(r.URL.Query().Get("address"))
+	log.Printf("[WHITELIST][CHECK] address=%s", addr)
 	list, err := getWhitelist()
 	if err != nil {
 		http.Error(w, "server error", 500)
