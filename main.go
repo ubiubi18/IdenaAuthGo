@@ -121,6 +121,7 @@ func main() {
 	createSnapshotTable()
 	createConfigTable()
 	createEpochTable()
+	createPenaltyTable()
 	epoch, thr, err := fetchEpochData()
 	if err != nil {
 		log.Fatalf("Failed to fetch epoch data: %v", err)
@@ -236,6 +237,18 @@ func createEpochTable() {
 	}
 }
 
+func createPenaltyTable() {
+	_, err := db.Exec(`
+        CREATE TABLE IF NOT EXISTS validation_penalties (
+            epoch INTEGER,
+            address TEXT,
+            PRIMARY KEY (epoch, address)
+        )`)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 func getConfigInt(key string) int {
 	row := db.QueryRow("SELECT value FROM config WHERE key=?", key)
 	var v string
@@ -261,6 +274,20 @@ func recordIdentitySnapshot(address, state string, stake float64) {
 
 func cleanupOldSnapshots() {
 	_, _ = db.Exec("DELETE FROM identity_snapshots WHERE ts < ?", time.Now().AddDate(0, 0, -30).Unix())
+}
+
+func recordPenalty(epoch int, address string) {
+	_, err := db.Exec(`INSERT OR IGNORE INTO validation_penalties(epoch,address) VALUES(?,?)`,
+		epoch, strings.ToLower(address))
+	if err != nil {
+		log.Printf("[PENALTY] DB error: %v", err)
+	}
+}
+
+func hasPenalty(epoch int, address string) bool {
+	row := db.QueryRow("SELECT 1 FROM validation_penalties WHERE epoch=? AND address=?", epoch, strings.ToLower(address))
+	var x int
+	return row.Scan(&x) == nil
 }
 
 func getWhitelist() ([]string, error) {
@@ -436,7 +463,9 @@ func buildEpochWhitelist(epoch int, threshold float64) error {
 	var list []string
 	for _, id := range ids {
 		if isEligibleSnapshot(id.State, id.Stake, threshold) {
-			list = append(list, id.Address)
+			if !getPenaltyStatus(epoch, id.Address) {
+				list = append(list, id.Address)
+			}
 		}
 	}
 	sort.Strings(list)
@@ -784,7 +813,15 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	writeJSON(w, map[string]bool{"eligible": found})
+	if found {
+		writeJSON(w, map[string]interface{}{"eligible": true})
+		return
+	}
+	if getPenaltyStatus(currentEpoch, addr) {
+		writeJSON(w, map[string]interface{}{"eligible": false, "reason": "excluded for reported flips in this epoch"})
+		return
+	}
+	writeJSON(w, map[string]interface{}{"eligible": false})
 }
 
 func merkleRootHandler(w http.ResponseWriter, r *http.Request) {
@@ -1140,6 +1177,46 @@ func updateIdentityCache(addr string) (string, float64, error) {
 		recordIdentitySnapshot(addr, state, stake)
 	}
 	return state, stake, err
+}
+
+func fetchValidationPenalty(epoch int, addr string) (bool, error) {
+	url := fmt.Sprintf("%s/api/Epoch/%d/Identity/%s/ValidationSummary", fallbackApiUrl, epoch, addr)
+	resp, err := http.Get(url)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("status %s", resp.Status)
+	}
+	var out struct {
+		Result struct {
+			Penalized bool   `json:"penalized"`
+			Reason    string `json:"penaltyReason"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return false, err
+	}
+	if out.Result.Penalized {
+		return true, nil
+	}
+	return false, nil
+}
+
+func getPenaltyStatus(epoch int, addr string) bool {
+	if hasPenalty(epoch, addr) {
+		return true
+	}
+	penalized, err := fetchValidationPenalty(epoch, addr)
+	if err != nil {
+		log.Printf("[PENALTY] fetch %s epoch %d: %v", addr, epoch, err)
+		return false
+	}
+	if penalized {
+		recordPenalty(epoch, addr)
+	}
+	return penalized
 }
 
 // epochLastHandler serves the /api/Epoch/Last endpoint.
