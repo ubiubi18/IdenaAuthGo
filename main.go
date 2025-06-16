@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -800,21 +801,24 @@ func whitelistEpochHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"addresses": list, "epoch": epoch})
 }
 
-// Check if address is eligible
+// whitelistCheckHandler validates a single address against the current whitelist.
+// It logs any failure with details and recovers from panics to avoid crashing the
+// server. Only real internal errors result in HTTP 500; a missing address simply
+// returns {"eligible": false}.
 func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// recover unexpected panics and return JSON error
+	// Recover from unexpected panics and log stacktrace
 	defer func() {
 		if rec := recover(); rec != nil {
+			log.Printf("[WHITELIST][CHECK][PANIC] %v\n%s", rec, debug.Stack())
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "server error"})
+			json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		}
 	}()
 
 	addr := strings.ToLower(r.URL.Query().Get("address"))
 	if addr == "" {
-		// no address provided
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "missing address"})
 		return
@@ -823,22 +827,27 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[WHITELIST][CHECK] address=%s", addr)
 	list, err := getWhitelist()
 	if err != nil {
-		// whitelist lookup failed
+		log.Printf("[ERROR] failed to load whitelist: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "server error"})
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
-	eligible := false
+	found := false
 	for _, a := range list {
 		if strings.EqualFold(a, addr) {
-			eligible = true
+			found = true
 			break
 		}
 	}
+	if !found {
+		log.Printf("[WHITELIST][CHECK] address not found: %s", addr)
+		json.NewEncoder(w).Encode(map[string]interface{}{"eligible": false})
+		return
+	}
 
 	if getPenaltyStatus(currentEpoch, addr) {
-		// user has validation penalty
+		log.Printf("[WHITELIST][CHECK] validation penalty for %s", addr)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"eligible": false,
 			"state":    "",
@@ -848,9 +857,8 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	state, stake := getIdentity(addr)
-	// success response with eligibility details
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"eligible": eligible,
+		"eligible": true,
 		"state":    state,
 		"stake":    stake,
 	})
