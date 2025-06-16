@@ -802,29 +802,58 @@ func whitelistEpochHandler(w http.ResponseWriter, r *http.Request) {
 
 // Check if address is eligible
 func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// recover unexpected panics and return JSON error
+	defer func() {
+		if rec := recover(); rec != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "server error"})
+		}
+	}()
+
 	addr := strings.ToLower(r.URL.Query().Get("address"))
+	if addr == "" {
+		// no address provided
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "missing address"})
+		return
+	}
+
 	log.Printf("[WHITELIST][CHECK] address=%s", addr)
 	list, err := getWhitelist()
 	if err != nil {
-		http.Error(w, "server error", 500)
+		// whitelist lookup failed
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "server error"})
 		return
 	}
-	found := false
+
+	eligible := false
 	for _, a := range list {
-		if strings.ToLower(a) == addr {
-			found = true
+		if strings.EqualFold(a, addr) {
+			eligible = true
 			break
 		}
 	}
-	if found {
-		writeJSON(w, map[string]interface{}{"eligible": true})
-		return
-	}
+
 	if getPenaltyStatus(currentEpoch, addr) {
-		writeJSON(w, map[string]interface{}{"eligible": false, "reason": "excluded for reported flips in this epoch"})
+		// user has validation penalty
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"eligible": false,
+			"state":    "",
+			"stake":    0.0,
+		})
 		return
 	}
-	writeJSON(w, map[string]interface{}{"eligible": false})
+
+	state, stake := getIdentity(addr)
+	// success response with eligibility details
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"eligible": eligible,
+		"state":    state,
+		"stake":    stake,
+	})
 }
 
 func merkleRootHandler(w http.ResponseWriter, r *http.Request) {
