@@ -18,8 +18,8 @@ func TestCheckIdentityStatuses(t *testing.T) {
 	dir := t.TempDir()
 	addrFile := filepath.Join(dir, "addresses.txt")
 	flipFile := filepath.Join(dir, "flips.txt")
-	os.WriteFile(addrFile, []byte("0x1\n0x2\n"), 0644)
-	os.WriteFile(flipFile, []byte("0x2\n"), 0644)
+	os.WriteFile(addrFile, []byte("0x0000000000000000000000000000000000000001\n0x0000000000000000000000000000000000000002\n"), 0644)
+	os.WriteFile(flipFile, []byte("0x0000000000000000000000000000000000000002\n"), 0644)
 
 	oldClient := http.DefaultClient
 	defer func() { http.DefaultClient = oldClient }()
@@ -44,7 +44,7 @@ func TestCheckIdentityStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check failed: %v", err)
 	}
-	if len(list) != 1 || list[0].Address != "0x1" {
+	if len(list) != 1 || list[0].Address != "0x0000000000000000000000000000000000000001" {
 		t.Fatalf("unexpected result: %+v", list)
 	}
 }
