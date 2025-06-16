@@ -49,6 +49,9 @@ var (
 	wlMu             sync.RWMutex
 	currentWhitelist []string
 	currentEpoch     int
+
+	// identityFetcher can be replaced in tests to avoid network calls
+	identityFetcher func(string) (string, float64) = getIdentity
 )
 
 type Session struct {
@@ -810,19 +813,19 @@ func whitelistEpochHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"addresses": list, "epoch": epoch})
 }
 
-// whitelistCheckHandler reads data/snapshot.json and verifies whether the
-// requested address exists in that snapshot. Older code assumed this file was a
-// simple []string, but the agent now writes identity objects.  We therefore
-// unmarshal into either map[string]Identity or []Identity and search by address.
-// If the address isn't present or any error occurs, {"eligible": false} is
-// returned instead of crashing the server.
+// whitelistCheckHandler fetches identity details for the given address and
+// returns an eligibility decision along with a reason. Errors are logged but the
+// response always contains a structured JSON result.
 func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var (
 		eligible bool
+		valid    bool
 		state    string
 		stake    float64
+		reason   string
+		rule     string
 		logErr   string
 	)
 
@@ -834,8 +837,9 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[WHITELIST][CHECK][PANIC] %v\n%s", rec, debug.Stack())
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
+			return
 		}
-		log.Printf("[WHITELIST][CHECK] address=%s eligible=%t state=%s stake=%.3f error=%s", addr, eligible, state, stake, logErr)
+		log.Printf("[WHITELIST][CHECK] address=%s eligible=%t state=%s stake=%.3f reason=%s", addr, eligible, state, stake, reason)
 	}()
 
 	if addr == "" {
@@ -845,56 +849,43 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := os.ReadFile("./data/snapshot.json")
-	if err != nil {
-		logErr = err.Error()
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
+	state, stake = identityFetcher(addr)
+	if state != "" {
+		valid = true
 	}
 
-	// try map[string]Identity first
-	snapMap := make(map[string]Identity)
-	if err := json.Unmarshal(data, &snapMap); err == nil && len(snapMap) > 0 {
-		if id, ok := snapMap[strings.ToLower(addr)]; ok {
+	switch state {
+	case "Human":
+		if stake >= stakeThreshold {
 			eligible = true
-			state = id.State
-			stake = id.Stake
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"eligible": true,
-				"state":    state,
-				"stake":    stake,
-			})
-			return
+			rule = fmt.Sprintf("Human stake >= %.0f", stakeThreshold)
+		} else {
+			reason = fmt.Sprintf("Not enough stake for Human (%.0f required)", stakeThreshold)
+			rule = "stake"
 		}
-		json.NewEncoder(w).Encode(map[string]bool{"eligible": false})
-		return
-	} else if err != nil {
-		logErr = err.Error()
+	case "Verified", "Newbie":
+		if stake >= 10000 {
+			eligible = true
+			rule = "10k stake"
+		} else {
+			reason = fmt.Sprintf("Not enough stake for %s", state)
+			rule = "stake"
+		}
+	case "":
+		reason = "Identity not found"
+	default:
+		reason = fmt.Sprintf("Identity is %s", state)
+		rule = "state"
 	}
 
-	// fallback: assume []Identity
-	var snapList []Identity
-	if err := json.Unmarshal(data, &snapList); err != nil {
-		logErr = err.Error()
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-	for _, id := range snapList {
-		if strings.EqualFold(id.Address, addr) {
-			eligible = true
-			state = id.State
-			stake = id.Stake
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"eligible": true,
-				"state":    state,
-				"stake":    stake,
-			})
-			return
-		}
-	}
-	json.NewEncoder(w).Encode(map[string]bool{"eligible": false})
+	writeJSON(w, map[string]interface{}{
+		"eligible": eligible,
+		"valid":    valid,
+		"state":    state,
+		"stake":    stake,
+		"reason":   reason,
+		"rule":     rule,
+	})
 }
 
 func merkleRootHandler(w http.ResponseWriter, r *http.Request) {

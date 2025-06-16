@@ -6,7 +6,7 @@ NOT USABLE RIGHT NOW! This project is a **work-in-progress** (WIP) Go backend fo
 ## Current Features
 
 - **Sign in with Idena:** Partial implementation of the deep-link flow (`/signin`, `/callback`) to authenticate users using the Idena app.
-- **Eligibility Check:** Evaluates identity state and stake (Human, Verified, or Newbie with ≥10,000 iDNA).
+ - **Eligibility Check:** Evaluates identity state and stake. Humans must meet the dynamic discrimination stake threshold, while Verified or Newbie identities need at least 10,000 iDNA.
 - **Whitelist Endpoints:** `/whitelist/current` returns the current epoch whitelist; `/whitelist/epoch/{epoch}` fetches a specific epoch; `/whitelist/check` verifies a single address.
 - **Penalty Exclusion:** Addresses with a validation penalty in the current epoch are automatically excluded from the whitelist.
 - **Merkle Root Endpoint:** Planned endpoint `/merkle_root` to return the Merkle root of the whitelist (not yet implemented).
@@ -18,7 +18,7 @@ NOT USABLE RIGHT NOW! This project is a **work-in-progress** (WIP) Go backend fo
 - **Fix and Run Indexer:** Resolve merge conflicts and logic bugs in `rolling_indexer/main.go`; validate endpoints `/identities/latest`, `/eligible`, etc.
 - **Feed Identity Data:** Use agent scripts or direct RPC calls to populate the identity indexer database.
 - **Build Merkle Tree Generator:** Create the `/merkle_root` endpoint that returns a SHA256-based Merkle root of eligible addresses.
-- **Apply Eligibility Criteria:** Ensure consistent rules (state ∈ {Human, Verified, Newbie} && stake ≥ 10,000) across frontend and backend.
+ - **Apply Eligibility Criteria:** Ensure consistent rules (Human stake ≥ dynamic threshold, Verified/Newbie stake ≥ 10,000) across frontend and backend.
 - **Update `AGENTS.md`:** Either populate with actual working agents or simplify it to reflect current usage only.
 - **Code Cleanup & Tests:** Add tests, remove stale comments/conflicts, and improve error handling.
 
