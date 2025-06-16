@@ -829,13 +829,17 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 
 	addr := strings.ToLower(r.URL.Query().Get("address"))
 	if addr == "" {
+		log.Printf("[WHITELIST][CHECK] missing address")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "missing address"})
 		return
 	}
 
+	log.Printf("[WHITELIST][CHECK] address=%s", addr)
+
 	data, err := os.ReadFile("./data/snapshot.json")
 	if err != nil {
+		log.Printf("[WHITELIST][CHECK] read error: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
@@ -845,6 +849,7 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	snapMap := make(map[string]Identity)
 	if err := json.Unmarshal(data, &snapMap); err == nil && len(snapMap) > 0 {
 		if id, ok := snapMap[strings.ToLower(addr)]; ok {
+			log.Printf("[WHITELIST][CHECK] address=%s eligible=true state=%s stake=%.3f", addr, id.State, id.Stake)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"eligible": true,
 				"state":    id.State,
@@ -852,19 +857,24 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		log.Printf("[WHITELIST][CHECK] address=%s eligible=false", addr)
 		json.NewEncoder(w).Encode(map[string]bool{"eligible": false})
 		return
+	} else if err != nil {
+		log.Printf("[WHITELIST][CHECK] json map error: %v", err)
 	}
 
 	// fallback: assume []Identity
 	var snapList []Identity
 	if err := json.Unmarshal(data, &snapList); err != nil {
+		log.Printf("[WHITELIST][CHECK] json list error: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	for _, id := range snapList {
 		if strings.EqualFold(id.Address, addr) {
+			log.Printf("[WHITELIST][CHECK] address=%s eligible=true state=%s stake=%.3f", addr, id.State, id.Stake)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"eligible": true,
 				"state":    id.State,
@@ -873,6 +883,7 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	log.Printf("[WHITELIST][CHECK] address=%s eligible=false", addr)
 	json.NewEncoder(w).Encode(map[string]bool{"eligible": false})
 }
 
