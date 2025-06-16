@@ -7,6 +7,8 @@ inline script:
 2. The script calls `/whitelist/check?address=ADDRESS` via `fetch`.
 3. The JSON response is parsed and a simple browser alert displays either
    "Eligible!" or "Not eligible" based on the `eligible` field.
+4. On page load another request to `/merkle_root` is triggered, but the result is
+   currently ignored.
 
 No additional validation is performed client‑side—the decision is entirely based
 on the backend response. There is also a `signinFallback()` that redirects to
@@ -20,3 +22,5 @@ on the backend response. There is also a `signinFallback()` that redirects to
 * Replace the browser `alert()` with inline status text so the page feels more
   integrated.
 * Cache the fetched Merkle root to avoid an extra request every page load.
+* Handle and surface backend errors (HTTP 500, 400) instead of assuming a
+  boolean result.

@@ -819,27 +819,35 @@ func whitelistEpochHandler(w http.ResponseWriter, r *http.Request) {
 func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	var (
+		eligible bool
+		state    string
+		stake    float64
+		logErr   string
+	)
+
+	addr := strings.ToLower(r.URL.Query().Get("address"))
+
 	defer func() {
 		if rec := recover(); rec != nil {
+			logErr = fmt.Sprintf("panic: %v", rec)
 			log.Printf("[WHITELIST][CHECK][PANIC] %v\n%s", rec, debug.Stack())
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		}
+		log.Printf("[WHITELIST][CHECK] address=%s eligible=%t state=%s stake=%.3f error=%s", addr, eligible, state, stake, logErr)
 	}()
 
-	addr := strings.ToLower(r.URL.Query().Get("address"))
 	if addr == "" {
-		log.Printf("[WHITELIST][CHECK] missing address")
+		logErr = "missing address"
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "missing address"})
+		json.NewEncoder(w).Encode(map[string]string{"error": logErr})
 		return
 	}
 
-	log.Printf("[WHITELIST][CHECK] address=%s", addr)
-
 	data, err := os.ReadFile("./data/snapshot.json")
 	if err != nil {
-		log.Printf("[WHITELIST][CHECK] read error: %v", err)
+		logErr = err.Error()
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
@@ -849,41 +857,43 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	snapMap := make(map[string]Identity)
 	if err := json.Unmarshal(data, &snapMap); err == nil && len(snapMap) > 0 {
 		if id, ok := snapMap[strings.ToLower(addr)]; ok {
-			log.Printf("[WHITELIST][CHECK] address=%s eligible=true state=%s stake=%.3f", addr, id.State, id.Stake)
+			eligible = true
+			state = id.State
+			stake = id.Stake
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"eligible": true,
-				"state":    id.State,
-				"stake":    id.Stake,
+				"state":    state,
+				"stake":    stake,
 			})
 			return
 		}
-		log.Printf("[WHITELIST][CHECK] address=%s eligible=false", addr)
 		json.NewEncoder(w).Encode(map[string]bool{"eligible": false})
 		return
 	} else if err != nil {
-		log.Printf("[WHITELIST][CHECK] json map error: %v", err)
+		logErr = err.Error()
 	}
 
 	// fallback: assume []Identity
 	var snapList []Identity
 	if err := json.Unmarshal(data, &snapList); err != nil {
-		log.Printf("[WHITELIST][CHECK] json list error: %v", err)
+		logErr = err.Error()
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	for _, id := range snapList {
 		if strings.EqualFold(id.Address, addr) {
-			log.Printf("[WHITELIST][CHECK] address=%s eligible=true state=%s stake=%.3f", addr, id.State, id.Stake)
+			eligible = true
+			state = id.State
+			stake = id.Stake
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"eligible": true,
-				"state":    id.State,
-				"stake":    id.Stake,
+				"state":    state,
+				"stake":    stake,
 			})
 			return
 		}
 	}
-	log.Printf("[WHITELIST][CHECK] address=%s eligible=false", addr)
 	json.NewEncoder(w).Encode(map[string]bool{"eligible": false})
 }
 
