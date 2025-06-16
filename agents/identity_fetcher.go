@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -41,25 +40,6 @@ func LoadFetcherConfig(configPath string) (*FetcherConfig, error) {
 	}
 	log.Printf("[AGENT][Fetcher] Config loaded: %+v", cfg)
 	return &cfg, nil
-}
-
-// Load list of addresses from file (one per line), print debug info
-func LoadAddressList(path string) ([]string, error) {
-	log.Printf("[AGENT][Fetcher] Loading address list from: %s", path)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		log.Printf("[AGENT][Fetcher] Error reading address list: %v", err)
-		return nil, err
-	}
-	lines := []string{}
-	for _, line := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			lines = append(lines, trimmed)
-		}
-	}
-	log.Printf("[AGENT][Fetcher] Loaded %d addresses", len(lines))
-	return lines, nil
 }
 
 // Fetch identity details from node; log raw response and decoded result

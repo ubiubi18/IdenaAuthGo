@@ -47,6 +47,26 @@ cp .env.example .env
 export BASE_URL="http://localhost:3030"
 export IDENA_RPC_KEY="your_idena_rpc_key"
 
+### Optional: Populate `address_list.json`
+
+Some endpoints use an address whitelist located at `data/address_list.json`.
+If this file is missing you can generate it with the strict builder utility:
+
+```bash
+go run cmd/strictbuilder/main.go
+```
+
+The command writes a clean JSON array of addresses. Alternatively you may run
+`whitelist_blueprint/build_idena_identities_strict.py` from the original
+blueprint and convert its output with `jq`:
+
+```bash
+python whitelist_blueprint/build_idena_identities_strict.py
+jq -r .address idena_strict_whitelist.jsonl | jq -R -s -c 'split("\n")[:-1]' > data/address_list.json
+```
+
+Running your own indexer is recommended for production setups.
+
 ### 4. Run the Web Server
 
 

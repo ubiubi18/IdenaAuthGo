@@ -13,6 +13,7 @@ import (
 const (
 	addressFile           = "data/allAddresses.txt"
 	outFile               = "data/idena_whitelist.jsonl"
+	addressListOut        = "data/address_list.json"
 	stakeThresholdFile    = "data/discriminationStakeThreshold.txt"
 	newbieMinStake        = 10000.0
 	verifiedMinStake      = 10000.0
@@ -235,6 +236,7 @@ func main() {
 		return
 	}
 	defer out.Close()
+	var addrList []string
 	whitelisted := 0
 	for i, addr := range addrs {
 		addrL := strings.ToLower(addr)
@@ -277,9 +279,18 @@ func main() {
 		})
 		out.Write(data)
 		out.Write([]byte("\n"))
+		addrList = append(addrList, strings.ToLower(addr))
 		whitelisted++
 		fmt.Printf("[%d/%d] OK: %s state=%s stake=%.4f\n", i+1, len(addrs), addr, sum.State, stake)
 		time.Sleep(200 * time.Millisecond)
 	}
+	out2, err := os.Create(addressListOut)
+	if err != nil {
+		fmt.Println("write address list:", err)
+		return
+	}
+	b, _ := json.MarshalIndent(addrList, "", "  ")
+	out2.Write(b)
+	out2.Close()
 	fmt.Printf("Done. Whitelisted: %d addresses\n", whitelisted)
 }
