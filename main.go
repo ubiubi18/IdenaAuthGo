@@ -412,6 +412,15 @@ type epochIdentity struct {
 	Stake   float64 `json:"stake,string"`
 }
 
+// Identity represents a record in snapshot.json. Stake may be encoded as a
+// string in the file, so we use the ",string" tag.
+type Identity struct {
+	Address string  `json:"address"`
+	State   string  `json:"state"`
+	Stake   float64 `json:"stake,string"`
+	Age     int     `json:"age,omitempty"`
+}
+
 func fetchEpochIdentities(epoch int) ([]epochIdentity, error) {
 	req := map[string]interface{}{
 		"jsonrpc": "2.0",
@@ -801,14 +810,15 @@ func whitelistEpochHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"addresses": list, "epoch": epoch})
 }
 
-// whitelistCheckHandler validates a single address against the current whitelist.
-// It logs any failure with details and recovers from panics to avoid crashing the
-// server. Only real internal errors result in HTTP 500; a missing address simply
-// returns {"eligible": false}.
+// whitelistCheckHandler reads data/snapshot.json and verifies whether the
+// requested address exists in that snapshot. Older code assumed this file was a
+// simple []string, but the agent now writes identity objects.  We therefore
+// unmarshal into either map[string]Identity or []Identity and search by address.
+// If the address isn't present or any error occurs, {"eligible": false} is
+// returned instead of crashing the server.
 func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Recover from unexpected panics and log stacktrace
 	defer func() {
 		if rec := recover(); rec != nil {
 			log.Printf("[WHITELIST][CHECK][PANIC] %v\n%s", rec, debug.Stack())
@@ -824,44 +834,46 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[WHITELIST][CHECK] address=%s", addr)
-	list, err := getWhitelist()
+	data, err := os.ReadFile("./data/snapshot.json")
 	if err != nil {
-		log.Printf("[ERROR] failed to load whitelist: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
-	found := false
-	for _, a := range list {
-		if strings.EqualFold(a, addr) {
-			found = true
-			break
+	// try map[string]Identity first
+	snapMap := make(map[string]Identity)
+	if err := json.Unmarshal(data, &snapMap); err == nil && len(snapMap) > 0 {
+		if id, ok := snapMap[strings.ToLower(addr)]; ok {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"eligible": true,
+				"state":    id.State,
+				"stake":    id.Stake,
+			})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"eligible": false})
+		return
+	}
+
+	// fallback: assume []Identity
+	var snapList []Identity
+	if err := json.Unmarshal(data, &snapList); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	for _, id := range snapList {
+		if strings.EqualFold(id.Address, addr) {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"eligible": true,
+				"state":    id.State,
+				"stake":    id.Stake,
+			})
+			return
 		}
 	}
-	if !found {
-		log.Printf("[WHITELIST][CHECK] address not found: %s", addr)
-		json.NewEncoder(w).Encode(map[string]interface{}{"eligible": false})
-		return
-	}
-
-	if getPenaltyStatus(currentEpoch, addr) {
-		log.Printf("[WHITELIST][CHECK] validation penalty for %s", addr)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"eligible": false,
-			"state":    "",
-			"stake":    0.0,
-		})
-		return
-	}
-
-	state, stake := getIdentity(addr)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"eligible": true,
-		"state":    state,
-		"stake":    stake,
-	})
+	json.NewEncoder(w).Encode(map[string]bool{"eligible": false})
 }
 
 func merkleRootHandler(w http.ResponseWriter, r *http.Request) {

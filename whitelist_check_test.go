@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,8 +14,7 @@ func TestWhitelistCheckHandlerSnapshotErrors(t *testing.T) {
 	setupTestDB(t)
 	defer db.Close()
 
-	// use a non-existent epoch so the handler attempts to read a missing file
-	currentEpoch = 424242
+	// no snapshot file should produce an internal error
 	req := httptest.NewRequest("GET", "/whitelist/check?address=0xabc", nil)
 	rr := httptest.NewRecorder()
 	whitelistCheckHandler(rr, req)
@@ -27,9 +25,9 @@ func TestWhitelistCheckHandlerSnapshotErrors(t *testing.T) {
 		t.Fatalf("unexpected body: %s", rr.Body.String())
 	}
 
-	// now create a malformed whitelist file
+	// now create a malformed snapshot file
 	os.MkdirAll("data", 0755)
-	path := fmt.Sprintf("data/whitelist_epoch_%d.json", currentEpoch)
+	path := "data/snapshot.json"
 	os.WriteFile(path, []byte("{"), 0644)
 	defer os.Remove(path)
 
