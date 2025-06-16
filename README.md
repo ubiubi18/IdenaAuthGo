@@ -6,10 +6,10 @@ NOT USABLE RIGHT NOW! This project is a **work-in-progress** (WIP) Go backend fo
 ## Current Features
 
 - **Sign in with Idena:** Partial implementation of the deep-link flow (`/signin`, `/callback`) to authenticate users using the Idena app.
- - **Eligibility Check:** Evaluates identity state and stake. Humans must meet the dynamic discrimination stake threshold, while Verified or Newbie identities need at least 10,000 iDNA.
+** **Eligibility Check:** Evaluates identity state and stake. Humans must meet the dynamic discrimination stake threshold, while Verified or Newbie identities need at least 10,000 iDNA.
 - **Whitelist Endpoints:** `/whitelist/current` returns the current epoch whitelist; `/whitelist/epoch/{epoch}` fetches a specific epoch; `/whitelist/check` verifies a single address.
 - **Penalty Exclusion:** Addresses with a validation penalty in the current epoch are automatically excluded from the whitelist.
-- **Merkle Root Endpoint:** Planned endpoint `/merkle_root` to return the Merkle root of the whitelist (not yet implemented).
+- **Merkle Root Endpoint:** `/merkle_root` returns the Merkle root of the current whitelist and `/merkle_proof` yields proofs.
 - **Identity Indexer:** `rolling_indexer/` polls identity data from an Idena node, stores to SQLite (`identities.db`), and serves JSON over HTTP. (⚠️ currently broken — needs debugging).
 - **Agent Scripts:** `agents/identity_fetcher.go` fetches identities by address list (configurable via `agents/fetcher_config.example.json`), useful for bootstrapping indexer data.
 
@@ -17,8 +17,8 @@ NOT USABLE RIGHT NOW! This project is a **work-in-progress** (WIP) Go backend fo
 
 - **Fix and Run Indexer:** Resolve merge conflicts and logic bugs in `rolling_indexer/main.go`; validate endpoints `/identities/latest`, `/eligible`, etc.
 - **Feed Identity Data:** Use agent scripts or direct RPC calls to populate the identity indexer database.
-- **Build Merkle Tree Generator:** Create the `/merkle_root` endpoint that returns a SHA256-based Merkle root of eligible addresses.
- - **Apply Eligibility Criteria:** Ensure consistent rules (Human stake ≥ dynamic threshold, Verified/Newbie stake ≥ 10,000) across frontend and backend.
+- **Merkle Tree Tools:** The backend now builds a deterministic SHA256 Merkle root each epoch and exposes `/merkle_root` and `/merkle_proof`.
+** **Apply Eligibility Criteria:** Ensure consistent rules (Human stake ≥ dynamic threshold, Verified/Newbie stake ≥ 10,000) across frontend and backend.
 - **Update `AGENTS.md`:** Either populate with actual working agents or simplify it to reflect current usage only.
 - **Code Cleanup & Tests:** Add tests, remove stale comments/conflicts, and improve error handling.
 
@@ -92,7 +92,7 @@ Example:
 curl -X GET "http://localhost:3030/whitelist/check?address=0xYourAddress"
 ```
 
-    /merkle_root – (to be implemented)
+    /merkle_root – current epoch Merkle root
 
 ### 5. Build & Run the Rolling Indexer
 
@@ -159,25 +159,18 @@ go run agents/session_block_finder.go agents/session_config.json
 
  It prints the block heights of both session start events.
 
-### 8. Export Merkle Root (upcoming)
+### 8. Export Merkle Root
 
- A planned endpoint /merkle_root will:
+The server automatically rebuilds the whitelist when a new epoch is detected.
+You can also generate the snapshot manually:
 
-    - Fetch all eligible addresses from the database
+```bash
+go run main.go -index
+```
 
-    - Construct a deterministic Merkle tree (using SHA256 or similar)
-
-    - Return the Merkle root hash in JSON
-
- This is designed for:
-
-    - Circles group minting
-
-    - Gnosis Safe or Idena–EVM bridges
-
-    - On-chain eligibility verification
-
- You can contribute to this feature – see open issues or the Codex roadmap.
+This command stores a deterministic list of eligible addresses in `data/whitelist_epoch_<N>.json`
+and prints the resulting Merkle root. The root and proofs are available via
+`/merkle_root` and `/merkle_proof?address=...`.
 
 ### Disclaimer
 

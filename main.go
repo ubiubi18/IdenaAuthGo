@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"html/template"
 	"idenauthgo/agents" // If using modules; may need path adjustment
@@ -113,8 +114,17 @@ func fetchEpochData() (int, float64, error) {
 }
 
 func main() {
-	go agents.RunIdentityFetcher("agents/fetcher_config.json")
+	indexNow := flag.Bool("index", false, "build whitelist for the current epoch and exit")
+	epochFlag := flag.Int("epoch", 0, "override epoch number when used with -index")
+	flag.Parse()
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	if *indexNow {
+		runIndexerCLI(*epochFlag)
+		return
+	}
+
+	go agents.RunIdentityFetcher("agents/fetcher_config.json")
 	var err error
 	db, err = sql.Open("sqlite3", dbFile)
 	if err != nil {
@@ -1469,4 +1479,37 @@ func identityHandler(w http.ResponseWriter, r *http.Request) {
 			"stake":   fmt.Sprintf("%.8f", stake),
 		},
 	})
+}
+
+// runIndexerCLI builds the whitelist for the given epoch and prints the Merkle root.
+// If epoch is 0, the latest epoch from the node is used.
+func runIndexerCLI(epoch int) {
+	var err error
+	db, err = sql.Open("sqlite3", dbFile)
+	if err != nil {
+		log.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	createSessionTable()
+	createSnapshotTable()
+	createEpochSnapshotTable()
+	createConfigTable()
+	createEpochTable()
+	createMerkleRootTable()
+	createPenaltyTable()
+
+	ep, thr, err := fetchEpochData()
+	if err != nil {
+		log.Fatalf("fetch epoch: %v", err)
+	}
+	if epoch > 0 {
+		ep = epoch
+	}
+	stakeThreshold = thr
+	if err := buildEpochWhitelist(ep, thr); err != nil {
+		log.Fatalf("build whitelist: %v", err)
+	}
+	root, _ := getMerkleRoot(ep)
+	fmt.Printf("epoch %d merkle root %s\n", ep, root)
 }
