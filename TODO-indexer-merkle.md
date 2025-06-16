@@ -4,6 +4,15 @@ This document outlines upcoming work to refactor the snapshot/whitelist logic
 into a minimal indexer and to incorporate Merkle tree proofs for whitelist
 entries.
 
+## Current Snapshot Mechanism
+
+* `agents/identity_fetcher.go` produces `data/snapshot.json` by polling a list
+  of addresses. The backend reads this file in `whitelistCheckHandler` when
+  verifying eligibility.
+* `exportWhitelist()` in `main.go` writes `data/whitelist_epoch_<n>.json` with
+  the current Merkle root and eligible addresses. This happens during cleanup
+  and after each authentication.
+
 ## 1. Snapshot Generation via Minimal Indexer
 
 * **Goal**: Produce deterministic, reproducible snapshots of all identities for
@@ -52,3 +61,5 @@ each epoch.
 3. Integrate Merkle root and proof endpoints in the main API.
 4. Update the frontend to display loading states and detailed error messages for
    eligibility checks.
+5. Expose an endpoint to retrieve a Merkle proof for any address and document
+   how to verify it in smart contracts or other clients.
