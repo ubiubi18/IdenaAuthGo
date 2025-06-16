@@ -123,8 +123,10 @@ func main() {
 	defer db.Close()
 	createSessionTable()
 	createSnapshotTable()
+	createEpochSnapshotTable()
 	createConfigTable()
 	createEpochTable()
+	createMerkleRootTable()
 	createPenaltyTable()
 	epoch, thr, err := fetchEpochData()
 	if err != nil {
@@ -217,6 +219,34 @@ func createSnapshotTable() {
 	}
 }
 
+func createEpochSnapshotTable() {
+	_, err := db.Exec(`
+        CREATE TABLE IF NOT EXISTS epoch_identity_snapshot (
+            epoch INTEGER,
+            address TEXT,
+            state TEXT,
+            stake REAL,
+            penalized INTEGER,
+            flipReported INTEGER,
+            PRIMARY KEY (epoch, address)
+        )`)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func createMerkleRootTable() {
+	_, err := db.Exec(`
+        CREATE TABLE IF NOT EXISTS epoch_merkle_roots (
+            epoch INTEGER PRIMARY KEY,
+            merkle_root TEXT,
+            ts INTEGER
+        )`)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 func createConfigTable() {
 	_, err := db.Exec(`
         CREATE TABLE IF NOT EXISTS config (
@@ -292,6 +322,22 @@ func hasPenalty(epoch int, address string) bool {
 	row := db.QueryRow("SELECT 1 FROM validation_penalties WHERE epoch=? AND address=?", epoch, strings.ToLower(address))
 	var x int
 	return row.Scan(&x) == nil
+}
+
+func saveMerkleRoot(epoch int, root string) {
+	_, err := db.Exec(`INSERT OR REPLACE INTO epoch_merkle_roots(epoch,merkle_root,ts) VALUES(?,?,?)`, epoch, root, time.Now().Unix())
+	if err != nil {
+		log.Printf("[MERKLE] save root: %v", err)
+	}
+}
+
+func getMerkleRoot(epoch int) (string, bool) {
+	row := db.QueryRow("SELECT merkle_root FROM epoch_merkle_roots WHERE epoch=?", epoch)
+	var root string
+	if err := row.Scan(&root); err == nil {
+		return root, true
+	}
+	return "", false
 }
 
 func getWhitelist() ([]string, error) {
@@ -473,27 +519,45 @@ func buildEpochWhitelist(epoch int, threshold float64) error {
 	if err != nil {
 		return err
 	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO epoch_identity_snapshot(epoch,address,state,stake,penalized,flipReported) VALUES(?,?,?,?,?,?)`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
 	var list []string
 	for _, id := range ids {
-		if isEligibleSnapshot(id.State, id.Stake, threshold) {
-			if hasFlipReport(epoch, id.Address) {
-				continue
-			}
-			if !getPenaltyStatus(epoch, id.Address) {
-				list = append(list, id.Address)
-			}
+		penalized := getPenaltyStatus(epoch, id.Address)
+		flip := hasFlipReport(epoch, id.Address)
+		if _, err := stmt.Exec(epoch, strings.ToLower(id.Address), id.State, id.Stake, boolToInt(penalized), boolToInt(flip)); err != nil {
+			log.Printf("[SNAPSHOT] insert %s: %v", id.Address, err)
+		}
+		if isEligibleSnapshot(id.State, id.Stake, threshold) && !penalized && !flip {
+			list = append(list, id.Address)
 		}
 	}
+	stmt.Close()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
 	sort.Strings(list)
+	root := computeMerkleRoot(list)
+	saveMerkleRoot(epoch, root)
 	path := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
-	data, _ := json.MarshalIndent(list, "", "  ")
+	data, _ := json.MarshalIndent(map[string]interface{}{
+		"merkle_root": root,
+		"addresses":   list,
+	}, "", "  ")
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return err
 	}
 	wlMu.Lock()
 	currentWhitelist = list
 	wlMu.Unlock()
-	log.Printf("[WHITELIST] built for epoch %d with %d addresses", epoch, len(list))
+	log.Printf("[WHITELIST] built for epoch %d with %d addresses root=%s", epoch, len(list), root)
 	return nil
 }
 
@@ -889,12 +953,19 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func merkleRootHandler(w http.ResponseWriter, r *http.Request) {
-	list, err := getWhitelist()
-	if err != nil {
-		http.Error(w, "server error", 500)
-		return
+	wlMu.RLock()
+	epoch := currentEpoch
+	wlMu.RUnlock()
+	root, ok := getMerkleRoot(epoch)
+	if !ok {
+		list, err := getWhitelist()
+		if err != nil {
+			http.Error(w, "server error", 500)
+			return
+		}
+		root = computeMerkleRoot(list)
 	}
-	writeJSON(w, map[string]string{"merkle_root": computeMerkleRoot(list)})
+	writeJSON(w, map[string]interface{}{"merkle_root": root, "epoch": epoch})
 }
 
 func merkleProofHandler(w http.ResponseWriter, r *http.Request) {
@@ -909,10 +980,17 @@ func merkleProofHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "address not found", http.StatusNotFound)
 		return
 	}
-	root := computeMerkleRoot(list)
+	wlMu.RLock()
+	epoch := currentEpoch
+	wlMu.RUnlock()
+	root, okR := getMerkleRoot(epoch)
+	if !okR {
+		root = computeMerkleRoot(list)
+	}
 	writeJSON(w, map[string]interface{}{
 		"merkle_root": root,
 		"proof":       proof,
+		"epoch":       epoch,
 	})
 }
 
