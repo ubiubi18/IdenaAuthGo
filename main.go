@@ -159,7 +159,7 @@ func main() {
 	}
 	resultTmpl = mustLoadTemplate("templates/result.html")
 
-	go watchEpochChanges()
+	go watchEpochFinalization()
 
 	http.Handle("/", http.FileServer(http.Dir("static")))
 	http.HandleFunc("/signin", signinHandler)
