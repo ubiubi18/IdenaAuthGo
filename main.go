@@ -524,6 +524,28 @@ func isEligibleSnapshot(state string, stake float64, threshold float64) bool {
 	return false
 }
 
+// nextEpochHint provides a short message describing what the identity must do
+// to be eligible in the next epoch based on the current live state and stake.
+func nextEpochHint(state string, stake float64, threshold float64) string {
+	if state == "" {
+		return "Identity not found"
+	}
+	switch state {
+	case "Human":
+		if stake >= threshold {
+			return fmt.Sprintf("Stay Human with stake ≥ %.0f IDNA", threshold)
+		}
+		return fmt.Sprintf("Add stake to %.0f IDNA and stay Human", threshold)
+	case "Verified", "Newbie":
+		if stake >= 10000 {
+			return fmt.Sprintf("Stay %s with stake ≥ 10000 IDNA", state)
+		}
+		return fmt.Sprintf("Add stake to 10000 IDNA and remain %s", state)
+	default:
+		return fmt.Sprintf("Become Human and have at least %.0f IDNA stake", threshold)
+	}
+}
+
 func buildEpochWhitelist(epoch int, threshold float64) error {
 	ids, err := fetchEpochIdentities(epoch)
 	if err != nil {
@@ -900,6 +922,7 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 		stake    float64
 		reason   string
 		rule     string
+		hint     string
 		logErr   string
 	)
 
@@ -923,34 +946,30 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state, stake = identityFetcher(addr)
-	if state != "" {
+	wlMu.RLock()
+	epoch := currentEpoch
+	wlMu.RUnlock()
+	state, stake, penalized, flip, ok := getEpochSnapshot(epoch, addr)
+	if ok {
 		valid = true
+		if penalized {
+			reason = "Validation penalty"
+			rule = "penalty"
+		} else if flip {
+			reason = "Flip reported"
+			rule = "flip"
+		} else if isEligibleSnapshot(state, stake, stakeThreshold) {
+			eligible = true
+			rule = "snapshot"
+		} else {
+			reason = fmt.Sprintf("Not eligible in snapshot: %s %.0f", state, stake)
+		}
+	} else {
+		reason = "Address not in snapshot"
 	}
 
-	switch state {
-	case "Human":
-		if stake >= stakeThreshold {
-			eligible = true
-			rule = fmt.Sprintf("Human stake >= %.0f", stakeThreshold)
-		} else {
-			reason = fmt.Sprintf("Not enough stake for Human (%.0f required)", stakeThreshold)
-			rule = "stake"
-		}
-	case "Verified", "Newbie":
-		if stake >= 10000 {
-			eligible = true
-			rule = "10k stake"
-		} else {
-			reason = fmt.Sprintf("Not enough stake for %s", state)
-			rule = "stake"
-		}
-	case "":
-		reason = "Identity not found"
-	default:
-		reason = fmt.Sprintf("Identity is %s", state)
-		rule = "state"
-	}
+	liveState, liveStake := identityFetcher(addr)
+	hint = nextEpochHint(liveState, liveStake, stakeThreshold)
 
 	writeJSON(w, map[string]interface{}{
 		"eligible": eligible,
@@ -959,6 +978,7 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 		"stake":    stake,
 		"reason":   reason,
 		"rule":     rule,
+		"hint":     hint,
 	})
 }
 
@@ -1263,6 +1283,22 @@ func getCachedIdentity(addr string) (string, float64, int64, bool) {
 		return state, stake, ts, true
 	}
 	return "", 0, 0, false
+}
+
+// getEpochSnapshot retrieves the stored snapshot for an address in a given epoch.
+// It returns state, stake, penalty flags and a boolean indicating if a record exists.
+func getEpochSnapshot(epoch int, addr string) (string, float64, bool, bool, bool) {
+	row := db.QueryRow(
+		"SELECT state, stake, penalized, flipReported FROM epoch_identity_snapshot WHERE epoch=? AND address=?",
+		epoch, strings.ToLower(addr),
+	)
+	var state string
+	var stake float64
+	var pen, flip int
+	if err := row.Scan(&state, &stake, &pen, &flip); err == nil {
+		return state, stake, pen != 0, flip != 0, true
+	}
+	return "", 0, false, false, false
 }
 
 // fetchIdentityFromNode queries the local node for an identity.
