@@ -230,17 +230,7 @@ func createSnapshotTable() {
 }
 
 func createEpochSnapshotTable() {
-	_, err := db.Exec(`
-        CREATE TABLE IF NOT EXISTS epoch_identity_snapshot (
-            epoch INTEGER,
-            address TEXT,
-            state TEXT,
-            stake REAL,
-            penalized INTEGER,
-            flipReported INTEGER,
-            PRIMARY KEY (epoch, address)
-        )`)
-	if err != nil {
+	if err := ensureEpochSnapshotTable(db); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -551,28 +541,23 @@ func buildEpochWhitelist(epoch int, threshold float64) error {
 	if err != nil {
 		return err
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO epoch_identity_snapshot(epoch,address,state,stake,penalized,flipReported) VALUES(?,?,?,?,?,?)`)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
+	var snaps []EpochSnapshot
 	var list []string
 	for _, id := range ids {
 		penalized := getPenaltyStatus(epoch, id.Address)
 		flip := hasFlipReport(epoch, id.Address)
-		if _, err := stmt.Exec(epoch, strings.ToLower(id.Address), id.State, id.Stake, boolToInt(penalized), boolToInt(flip)); err != nil {
-			log.Printf("[SNAPSHOT] insert %s: %v", id.Address, err)
-		}
+		snaps = append(snaps, EpochSnapshot{
+			Address:      id.Address,
+			State:        id.State,
+			Stake:        id.Stake,
+			Penalized:    penalized,
+			FlipReported: flip,
+		})
 		if isEligibleSnapshot(id.State, id.Stake, threshold) && !penalized && !flip {
 			list = append(list, id.Address)
 		}
 	}
-	stmt.Close()
-	if err := tx.Commit(); err != nil {
+	if err := upsertEpochSnapshots(db, epoch, snaps); err != nil {
 		return err
 	}
 	sort.Strings(list)
