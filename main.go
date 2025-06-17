@@ -134,6 +134,7 @@ func main() {
 	createSessionTable()
 	createSnapshotTable()
 	createEpochSnapshotTable()
+	createSnapshotMetaTable()
 	createConfigTable()
 	createEpochTable()
 	createMerkleRootTable()
@@ -149,11 +150,14 @@ func main() {
 		if err := buildEpochWhitelist(epoch, thr); err != nil {
 			log.Printf("initial whitelist build: %v", err)
 		}
+		saveSnapshotMeta(epoch, 0)
 		setConfigInt("current_epoch", epoch)
 	} else {
 		if _, err := getWhitelist(); err != nil {
 			if err := buildEpochWhitelist(epoch, thr); err != nil {
 				log.Printf("whitelist load failed: %v", err)
+			} else {
+				saveSnapshotMeta(epoch, 0)
 			}
 		}
 	}
@@ -170,6 +174,7 @@ func main() {
 	http.HandleFunc("/whitelist/current", whitelistCurrentHandler)
 	http.HandleFunc("/whitelist/epoch/", whitelistEpochHandler)
 	http.HandleFunc("/whitelist/check", whitelistCheckHandler)
+	http.HandleFunc("/eligibility", eligibilitySnapshotHandler)
 	http.HandleFunc("/merkle_root", merkleRootHandler)
 	http.HandleFunc("/merkle_proof", merkleProofHandler)
 	http.HandleFunc("/api/Epoch/Last", epochLastHandler)
@@ -231,6 +236,17 @@ func createSnapshotTable() {
 
 func createEpochSnapshotTable() {
 	if err := ensureEpochSnapshotTable(db); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func createSnapshotMetaTable() {
+	_, err := db.Exec(`
+        CREATE TABLE IF NOT EXISTS epoch_snapshot_meta (
+            epoch INTEGER PRIMARY KEY,
+            block INTEGER
+        )`)
+	if err != nil {
 		log.Fatal(err)
 	}
 }
@@ -338,6 +354,31 @@ func getMerkleRoot(epoch int) (string, bool) {
 		return root, true
 	}
 	return "", false
+}
+
+func saveSnapshotMeta(epoch, block int) {
+	_, err := db.Exec(`INSERT OR REPLACE INTO epoch_snapshot_meta(epoch, block) VALUES(?,?)`, epoch, block)
+	if err != nil {
+		log.Printf("[SNAPSHOT_META] save: %v", err)
+	}
+}
+
+func getSnapshotBlock(epoch int) int {
+	row := db.QueryRow("SELECT block FROM epoch_snapshot_meta WHERE epoch=?", epoch)
+	var blk int
+	if err := row.Scan(&blk); err == nil {
+		return blk
+	}
+	return 0
+}
+
+func latestSnapshotEpoch() (int, int) {
+	row := db.QueryRow("SELECT epoch, block FROM epoch_snapshot_meta ORDER BY epoch DESC LIMIT 1")
+	var ep, blk int
+	if err := row.Scan(&ep, &blk); err == nil {
+		return ep, blk
+	}
+	return 0, 0
 }
 
 func getWhitelist() ([]string, error) {
@@ -468,6 +509,15 @@ type Identity struct {
 	State   string  `json:"state"`
 	Stake   float64 `json:"stake,string"`
 	Age     int     `json:"age,omitempty"`
+}
+
+type EligibilityResponse struct {
+	Eligible bool    `json:"eligible"`
+	State    string  `json:"state"`
+	Stake    float64 `json:"stake"`
+	Reason   string  `json:"reason"`
+	Epoch    int     `json:"epoch"`
+	Block    int     `json:"block"`
 }
 
 func fetchEpochIdentities(epoch int) ([]epochIdentity, error) {
@@ -965,6 +1015,55 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 		"rule":     rule,
 		"hint":     hint,
 	})
+}
+
+// eligibilitySnapshotHandler returns eligibility info from the last finalized epoch snapshot.
+func eligibilitySnapshotHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	addr := strings.ToLower(r.URL.Query().Get("address"))
+	if addr == "" {
+		http.Error(w, "missing address", http.StatusBadRequest)
+		return
+	}
+
+	epochStr := r.URL.Query().Get("epoch")
+	var epoch, block int
+	var err error
+	if epochStr == "" {
+		epoch, block = latestSnapshotEpoch()
+	} else {
+		epoch, err = strconv.Atoi(epochStr)
+		if err != nil {
+			http.Error(w, "invalid epoch", http.StatusBadRequest)
+			return
+		}
+		block = getSnapshotBlock(epoch)
+	}
+
+	if epoch == 0 {
+		json.NewEncoder(w).Encode(EligibilityResponse{Reason: "eligibility unknown \u2013 snapshot not taken yet."})
+		return
+	}
+
+	state, stake, penalized, flip, ok := getEpochSnapshot(epoch, addr)
+	if !ok {
+		json.NewEncoder(w).Encode(EligibilityResponse{Reason: "eligibility unknown \u2013 snapshot not taken yet.", Epoch: epoch, Block: block})
+		return
+	}
+
+	resp := EligibilityResponse{State: state, Stake: stake, Epoch: epoch, Block: block}
+	if penalized {
+		resp.Reason = "Validation penalty"
+	} else if flip {
+		resp.Reason = "Flip reported"
+	} else if isEligibleSnapshot(state, stake, stakeThreshold) {
+		resp.Eligible = true
+	} else {
+		resp.Reason = fmt.Sprintf("Not eligible in snapshot: %s %.0f", state, stake)
+	}
+
+	json.NewEncoder(w).Encode(resp)
 }
 
 func merkleRootHandler(w http.ResponseWriter, r *http.Request) {
@@ -1515,6 +1614,7 @@ func runIndexerCLI(epoch int) {
 	createSessionTable()
 	createSnapshotTable()
 	createEpochSnapshotTable()
+	createSnapshotMetaTable()
 	createConfigTable()
 	createEpochTable()
 	createMerkleRootTable()
@@ -1531,6 +1631,7 @@ func runIndexerCLI(epoch int) {
 	if err := buildEpochWhitelist(ep, thr); err != nil {
 		log.Fatalf("build whitelist: %v", err)
 	}
+	saveSnapshotMeta(ep, 0)
 	root, _ := getMerkleRoot(ep)
 	fmt.Printf("epoch %d merkle root %s\n", ep, root)
 }

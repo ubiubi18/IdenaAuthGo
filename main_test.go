@@ -151,6 +151,7 @@ func setupTestDB(t *testing.T) {
 	}
 	createSessionTable()
 	createEpochSnapshotTable()
+	createSnapshotMetaTable()
 	createPenaltyTable()
 	createMerkleRootTable()
 	resultTmpl = mustLoadTemplate("templates/result.html")
