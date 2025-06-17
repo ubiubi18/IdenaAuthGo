@@ -120,7 +120,7 @@
       <p>Check an address or sign in with Idena.</p>
       <input id="addr" type="text" placeholder="0x..." style="width:100%;padding:12px;border-radius:8px;border:1px solid #555;background:#2b2e34;color:#fff;" />
       <button class="btn-primary" onclick="checkAddr()">Check address</button>
-      <pre id="result" style="white-space:pre-wrap;margin:8px 0 0 0;"></pre>
+      <div id="result" style="white-space:pre-wrap;margin:8px 0 0 0;"></div>
       <a href="/signin" class="signin-link">Sign in with Idena</a>
       <ul class="rules">
         <li>Must be <strong>Human</strong>, <strong>Verified</strong>, or <strong>Newbie</strong></li>
@@ -138,18 +138,27 @@
 <script>
 function checkAddr() {
   const a = document.getElementById('addr').value.trim();
-  if(!a) { document.getElementById('result').textContent = 'Enter an address'; return; }
-  fetch('/whitelist/check?address='+a)
+  const result = document.getElementById('result');
+  if(!a) { result.textContent = 'Enter an address'; return; }
+  result.textContent = 'Checking...';
+  fetch('/eligibility?address='+a)
     .then(r=>r.json())
     .then(res=>{
       const lines = [];
-      lines.push(res.eligible ? '✅ Eligible' : '❌ Not eligible');
+      lines.push(`Eligibility as of epoch ${res.epoch}, block ${res.block}:`);
+      lines.push(res.eligible ? '<span style="color:#7bf27b">✅ Eligible</span>' : '<span style="color:#ff6b6b">❌ Not eligible</span>');
       if(res.state) lines.push('Identity: '+res.state);
       if(typeof res.stake === 'number') lines.push('Stake: '+res.stake.toLocaleString('en-US')+' IDNA');
       if(res.reason) lines.push('Reason: '+res.reason);
-      document.getElementById('result').textContent = lines.join('\n');
+      if(res.prediction){
+        const warn = res.prediction.includes('not next');
+        let line = 'Next epoch prediction: '+res.prediction;
+        if(warn) line = '<span style="color:#ffd860">'+line+'</span>';
+        lines.push(warn? '⚠️ '+line : line);
+      }
+      result.innerHTML = lines.join('<br>');
     })
-    .catch(()=>{ document.getElementById('result').textContent = 'Error checking address'; });
+    .catch(()=>{ result.textContent = 'Error checking address'; });
 }
 fetch('/api/Epoch/Last').then(r=>r.json()).then(d=>{
   const thr = parseFloat(d.result.discriminationStakeThreshold);
