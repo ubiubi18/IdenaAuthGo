@@ -150,6 +150,9 @@ func setupTestDB(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	createSessionTable()
+	createEpochSnapshotTable()
+	createPenaltyTable()
+	createMerkleRootTable()
 	resultTmpl = mustLoadTemplate("templates/result.html")
 }
 
