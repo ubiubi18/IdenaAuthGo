@@ -8,6 +8,7 @@ NOT USABLE RIGHT NOW! This project is a **work-in-progress** (WIP) Go backend fo
 - **Sign in with Idena:** Partial implementation of the deep-link flow (`/signin`, `/callback`) to authenticate users using the Idena app.
 ** **Eligibility Check:** Evaluates identity state and stake. Humans must meet the dynamic discrimination stake threshold, while Verified or Newbie identities need at least 10,000 iDNA.
 - **Whitelist Endpoints:** `/whitelist/current` returns the current epoch whitelist; `/whitelist/epoch/{epoch}` fetches a specific epoch; `/whitelist/check` verifies a single address.
+- **Eligibility Snapshot:** `/eligibility?address=...` shows eligibility as of the snapshot epoch/block and predicts the next epoch.
 - **Penalty Exclusion:** Addresses with a validation penalty in the current epoch are automatically excluded from the whitelist.
 - **Merkle Root Endpoint:** `/merkle_root` returns the Merkle root of the current whitelist and `/merkle_proof` yields proofs.
 - **Identity Indexer:** `rolling_indexer/` polls identity data from an Idena node, stores to SQLite (`identities.db`), and serves JSON over HTTP. (⚠️ currently broken — needs debugging).
@@ -85,11 +86,12 @@ Available routes include:
     /whitelist/epoch/{epoch} – whitelist for a specific epoch
 
     /whitelist/check?address=... – checks one address
+    /eligibility?address=... – eligibility as of the snapshot
 
 Example:
 
 ```bash
-curl -X GET "http://localhost:3030/whitelist/check?address=0xYourAddress"
+curl -X GET "http://localhost:3030/eligibility?address=0xYourAddress"
 ```
 
     /merkle_root – current epoch Merkle root
