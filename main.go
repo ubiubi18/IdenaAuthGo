@@ -512,12 +512,13 @@ type Identity struct {
 }
 
 type EligibilityResponse struct {
-	Eligible bool    `json:"eligible"`
-	State    string  `json:"state"`
-	Stake    float64 `json:"stake"`
-	Reason   string  `json:"reason"`
-	Epoch    int     `json:"epoch"`
-	Block    int     `json:"block"`
+	Eligible   bool    `json:"eligible"`
+	State      string  `json:"state"`
+	Stake      float64 `json:"stake"`
+	Reason     string  `json:"reason"`
+	Epoch      int     `json:"epoch"`
+	Block      int     `json:"block"`
+	Prediction string  `json:"prediction,omitempty"`
 }
 
 func fetchEpochIdentities(epoch int) ([]epochIdentity, error) {
@@ -583,6 +584,22 @@ func nextEpochHint(state string, stake float64, threshold float64) string {
 		return fmt.Sprintf("Add stake to 10000 IDNA and remain %s", state)
 	default:
 		return fmt.Sprintf("Become Human and have at least %.0f IDNA stake", threshold)
+	}
+}
+
+// predictNextEpoch compares current snapshot eligibility with the live state
+// and stake to predict eligibility for the next epoch.
+func predictNextEpoch(snapshotEligible bool, liveState string, liveStake float64, threshold float64) string {
+	liveEligible := isEligibleSnapshot(liveState, liveStake, threshold)
+	switch {
+	case snapshotEligible && !liveEligible:
+		return "eligible this epoch, but not next"
+	case !snapshotEligible && liveEligible:
+		return "not eligible this epoch, but eligible next"
+	case liveEligible:
+		return "eligible both epochs"
+	default:
+		return "not eligible"
 	}
 }
 
@@ -1062,6 +1079,9 @@ func eligibilitySnapshotHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		resp.Reason = fmt.Sprintf("Not eligible in snapshot: %s %.0f", state, stake)
 	}
+
+	liveState, liveStake := identityFetcher(addr)
+	resp.Prediction = predictNextEpoch(resp.Eligible, liveState, liveStake, stakeThreshold)
 
 	json.NewEncoder(w).Encode(resp)
 }
