@@ -40,10 +40,12 @@ import (
 
 // Config holds runtime settings loaded from env or config.json
 type Config struct {
-	RPCURL      string `json:"rpc_url"`
-	RPCKey      string `json:"rpc_key"`
-	IntervalMin int    `json:"interval_minutes"`
-	DBPath      string `json:"db_path"`
+	RPCURL             string `json:"rpc_url"`
+	RPCKey             string `json:"rpc_key"`
+	IntervalMin        int    `json:"interval_minutes"`
+	DBPath             string `json:"db_path"`
+	BootstrapEpochs    int    `json:"bootstrap_epochs"`
+	UsePublicBootstrap bool   `json:"use_public_bootstrap"`
 }
 
 // Snapshot represents one identity record at a particular time
@@ -72,28 +74,43 @@ type fbInfo struct {
 	Window time.Time
 }
 
-func getenv(k, d string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return d
-}
-
 // loadConfig reads config.json if present and applies env overrides
 func loadConfig() Config {
 	c := Config{
-		RPCURL:      getenv("RPC_URL", "http://localhost:9009"),
-		RPCKey:      os.Getenv("RPC_KEY"),
-		IntervalMin: 10,
-		DBPath:      "identities.db",
+		RPCURL:             "http://localhost:9009",
+		RPCKey:             "",
+		IntervalMin:        10,
+		DBPath:             "identities.db",
+		BootstrapEpochs:    3,
+		UsePublicBootstrap: true,
+	}
+	if data, err := os.ReadFile("config.json"); err == nil {
+		_ = json.Unmarshal(data, &c)
+	}
+	if v := os.Getenv("RPC_URL"); v != "" {
+		c.RPCURL = v
+	}
+	if v := os.Getenv("RPC_KEY"); v != "" {
+		c.RPCKey = v
 	}
 	if v := os.Getenv("FETCH_INTERVAL_MINUTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			c.IntervalMin = n
 		}
 	}
-	if data, err := os.ReadFile("config.json"); err == nil {
-		_ = json.Unmarshal(data, &c)
+	if v := os.Getenv("DB_PATH"); v != "" {
+		c.DBPath = v
+	}
+	if v := os.Getenv("BOOTSTRAP_EPOCHS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.BootstrapEpochs = n
+		}
+	}
+	if v := os.Getenv("USE_PUBLIC_BOOTSTRAP"); v != "" {
+		v = strings.ToLower(v)
+		if v == "0" || v == "false" || v == "no" {
+			c.UsePublicBootstrap = false
+		}
 	}
 	return c
 }
@@ -124,6 +141,90 @@ func loadTracked() {
 			tracked[line] = struct{}{}
 		}
 	}
+}
+
+func dbIsEmpty() bool {
+	row := db.QueryRow("SELECT COUNT(*) FROM snapshots")
+	var n int
+	if err := row.Scan(&n); err != nil {
+		return true
+	}
+	return n == 0
+}
+
+func fetchPublicEpoch() (int, error) {
+	resp, err := http.Get("https://rpc.idena.io/api/Epoch/Last")
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("status %s", resp.Status)
+	}
+	var out struct {
+		Result struct {
+			Epoch int `json:"epoch"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, err
+	}
+	return out.Result.Epoch, nil
+}
+
+func fetchPublicEpochIdentities(epoch int) ([]Snapshot, error) {
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "dna_epochIdentities",
+		"params":  []interface{}{epoch, 0},
+		"id":      1,
+	}
+	body, _ := json.Marshal(req)
+	resp, err := http.Post("https://rpc.idena.io", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %s", resp.Status)
+	}
+	var out struct {
+		Result []struct {
+			Address string `json:"address"`
+			State   string `json:"state"`
+			Stake   string `json:"stake"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	list := make([]Snapshot, 0, len(out.Result))
+	for _, r := range out.Result {
+		stake, _ := strconv.ParseFloat(r.Stake, 64)
+		list = append(list, Snapshot{Address: r.Address, State: r.State, Stake: stake})
+	}
+	return list, nil
+}
+
+func bootstrapHistory(epochs int) error {
+	log.Println("Bootstrapping from public API... (can be disabled). If unavailable, will only track new data after this session.")
+	current, err := fetchPublicEpoch()
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	for i := 0; i < epochs; i++ {
+		ep := current - i
+		snaps, err := fetchPublicEpochIdentities(ep)
+		if err != nil {
+			return err
+		}
+		storeSnapshots(snaps, now.AddDate(0, 0, -7*i))
+		for _, s := range snaps {
+			tracked[s.Address] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func fetchAllIdentities() ([]Snapshot, error) {
@@ -404,6 +505,11 @@ func main() {
 	defer db.Close()
 
 	createSchema()
+	if cfg.UsePublicBootstrap && cfg.BootstrapEpochs > 0 && dbIsEmpty() {
+		if err := bootstrapHistory(cfg.BootstrapEpochs); err != nil {
+			log.Printf("bootstrap failed: %v -- continuing without", err)
+		}
+	}
 	go runIndexer()
 
 	http.HandleFunc("/identities/latest", handleLatest)

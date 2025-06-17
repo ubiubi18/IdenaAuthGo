@@ -111,6 +111,8 @@ go build -o rolling-indexer main.go
 export RPC_URL="http://localhost:9009"     # node RPC endpoint
 export RPC_KEY="your_rpc_key"              # if your node requires an API key
 export FETCH_INTERVAL_MINUTES=10            # how often to poll
+export USE_PUBLIC_BOOTSTRAP=true            # download past data on first run
+export BOOTSTRAP_EPOCHS=3                   # number of epochs to fetch
 
 ./rolling-indexer
 ```
@@ -122,7 +124,9 @@ You may alternatively create a `config.json` with the same fields:
   "rpc_url": "http://localhost:9009",
   "rpc_key": "your_rpc_key",
   "interval_minutes": 10,
-  "db_path": "identities.db"
+  "db_path": "identities.db",
+  "bootstrap_epochs": 3,
+  "use_public_bootstrap": true
 }
 ```
 
