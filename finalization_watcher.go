@@ -77,6 +77,7 @@ func watchEpochFinalization() {
 				currentEpoch = epoch
 				wlMu.Unlock()
 				setConfigInt("current_epoch", epoch)
+				saveSnapshotMeta(epoch, blk.Height)
 				last = epoch
 			}
 		}
