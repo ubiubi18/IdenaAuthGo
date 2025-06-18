@@ -89,6 +89,18 @@ export default function MerkleWhitelistGenerator() {
   const [token, setToken] = useState(getStoredToken());
   const [authInput, setAuthInput] = useState("");
   const [authStatus, setAuthStatus] = useState("");
+  const [accountInfo, setAccountInfo] = useState(null);
+
+  // --- Address search state ---
+  const [search, setSearch] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [searchHistory, setSearchHistory] = useState(() =>
+    JSON.parse(localStorage.getItem("searchHistory") || "[]"),
+  );
+
+  // --- Audit state ---
+  const [auditHistory, setAuditHistory] = useState([]);
+  const [showAudit, setShowAudit] = useState(false);
 
   // Utility to append a log line
   const appendLog = (line) => {
@@ -125,7 +137,22 @@ export default function MerkleWhitelistGenerator() {
     setToken("");
     sessionStorage.removeItem("idenaApiToken");
     setAuthStatus("");
+    setAccountInfo(null);
   };
+
+  // Fetch account info when token changes
+  useEffect(() => {
+    if (token) {
+      fetch(`${apiBase}/whoami`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => res.json())
+        .then((info) => setAccountInfo(info))
+        .catch(() => setAccountInfo(null));
+    } else {
+      setAccountInfo(null);
+    }
+  }, [token, apiBase]);
 
   // Color map for status badges
   const statusColors = {
@@ -428,6 +455,88 @@ export default function MerkleWhitelistGenerator() {
     navigator.clipboard.writeText(JSON.stringify(proof));
   }
 
+  // --- Address search handlers ---
+  const handleSearch = async (q) => {
+    setSearch(q);
+    if (!q) {
+      setSuggestions([]);
+      return;
+    }
+    if (whitelistData && Array.isArray(whitelistData.addresses)) {
+      const matches = whitelistData.addresses.filter((a) =>
+        a.toLowerCase().includes(q.toLowerCase()),
+      );
+      setSuggestions(matches.slice(0, 10));
+    } else {
+      try {
+        const res = await fetchWithAuth(
+          `${apiBase}/identities/search?q=${encodeURIComponent(q)}`,
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setSuggestions(data.slice(0, 10));
+        }
+      } catch {
+        setSuggestions([]);
+      }
+    }
+  };
+
+  const selectSuggestion = (addr) => {
+    setAddress(addr);
+    setSuggestions([]);
+  };
+
+  // Update search history
+  useEffect(() => {
+    if (address && !searchHistory.includes(address)) {
+      const updated = [address, ...searchHistory].slice(0, 10);
+      setSearchHistory(updated);
+      localStorage.setItem("searchHistory", JSON.stringify(updated));
+    }
+  }, [address]);
+
+  // --- Audit / history fetch ---
+  const fetchAudit = async () => {
+    if (!address) return;
+    setShowAudit(true);
+    try {
+      const res = await fetch(`${apiBase}/identity/${address}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAuditHistory(data);
+      } else {
+        setAuditHistory([]);
+      }
+    } catch {
+      setAuditHistory([]);
+    }
+  };
+
+  function downloadAuditCSV() {
+    if (!auditHistory.length) return;
+    const csv =
+      "Epoch,Eligibility,Status,Stake,Reasons\n" +
+      auditHistory
+        .map((row) =>
+          [
+            row.epoch,
+            row.eligible,
+            row.status,
+            row.stake,
+            (row.reasons || []).join("; "),
+          ].join(","),
+        )
+        .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `audit_${address}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // --- Main UI ---
   return (
     <ErrorBoundary>
@@ -443,6 +552,15 @@ export default function MerkleWhitelistGenerator() {
 
         {/* Settings Panel */}
         <SettingsPanel />
+
+        {token && accountInfo && (
+          <div className="mb-3 text-xs text-gray-700">
+            Logged in as:{' '}
+            <span className="font-semibold">
+              {accountInfo.username || 'API user'}
+            </span>
+          </div>
+        )}
 
         {/* Title */}
         <h1 className="text-2xl font-bold text-center mb-4">
@@ -528,6 +646,43 @@ export default function MerkleWhitelistGenerator() {
           </button>
         </div>
 
+        {/* Address Search */}
+        <div className="mb-6">
+          <input
+            className="border rounded p-2 w-72"
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search address, label, or name..."
+          />
+          {suggestions.length > 0 && (
+            <ul className="bg-white border rounded shadow mt-1 max-h-40 overflow-auto z-10">
+              {suggestions.map((addr) => (
+                <li
+                  key={addr}
+                  className="px-3 py-1 cursor-pointer hover:bg-blue-100"
+                  onClick={() => selectSuggestion(addr)}
+                >
+                  {addr}
+                </li>
+              ))}
+            </ul>
+          )}
+          {searchHistory.length > 0 && (
+            <div className="text-xs text-gray-500 mt-1">
+              Recent:&nbsp;
+              {searchHistory.map((addr) => (
+                <span
+                  key={addr}
+                  className="mr-2 cursor-pointer underline"
+                  onClick={() => selectSuggestion(addr)}
+                >
+                  {addr}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Address Checker */}
         <div className="bg-gray-50 dark:bg-gray-800 rounded p-4 mt-8">
           <h2 className="font-semibold mb-2">Check Address</h2>
@@ -604,6 +759,54 @@ export default function MerkleWhitelistGenerator() {
             </div>
           )}
           {error && <div className="text-red-600 mt-2">{error}</div>}
+          <div className="mt-3">
+            <button className="btn btn-xs" onClick={fetchAudit}>
+              Show full history
+            </button>
+            {showAudit && auditHistory.length > 0 && (
+              <div className="mt-2">
+                <div className="flex justify-between mb-1">
+                  <span className="font-semibold">
+                    Eligibility history for {address}:
+                  </span>
+                  <button className="btn btn-xs" onClick={downloadAuditCSV}>
+                    Download CSV
+                  </button>
+                </div>
+                <table className="w-full text-xs border">
+                  <thead>
+                    <tr>
+                      <th>Epoch</th>
+                      <th>Eligible</th>
+                      <th>Status</th>
+                      <th>Stake</th>
+                      <th>Reasons</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditHistory.map((row) => (
+                      <tr
+                        key={row.epoch}
+                        className={row.eligible ? 'bg-green-50' : 'bg-red-50'}
+                      >
+                        <td>{row.epoch}</td>
+                        <td>{row.eligible ? '✔' : '✖'}</td>
+                        <td>{row.status}</td>
+                        <td>{row.stake}</td>
+                        <td>
+                          <ul>
+                            {(row.reasons || []).map((r, i) => (
+                              <li key={i}>{r}</li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </ErrorBoundary>
