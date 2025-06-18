@@ -19,6 +19,26 @@ export default function MerkleWhitelistGenerator() {
   // Backend URL base (adjust as needed)
   const API_BASE = 'http://localhost:3030'
 
+  // Color map for status badges
+  const statusColors = {
+    Human: 'bg-green-200 text-green-800',
+    Verified: 'bg-blue-200 text-blue-800',
+    Newbie: 'bg-yellow-100 text-yellow-800',
+    Suspended: 'bg-red-200 text-red-800',
+    Zombie: 'bg-gray-200 text-gray-700',
+    Killed: 'bg-gray-200 text-gray-700',
+    Undefined: 'bg-gray-100 text-gray-500'
+  }
+
+  // Format stake (thousands separator)
+  function formatStake(stake) {
+    if (!stake) return ''
+    return (
+      Number(stake).toLocaleString('en-US', { maximumFractionDigits: 3 }) +
+      ' iDNA'
+    )
+  }
+
   // Start Merkle root generation with log streaming
   const handleGenerate = async (source) => {
     setLoading(true)
@@ -69,13 +89,18 @@ export default function MerkleWhitelistGenerator() {
     }
   }
 
-  // Address eligibility and proof check
+  // Address eligibility and proof check with reason/explanations
   const handleCheck = async () => {
     setEligibilityResult(null)
     setError(null)
     try {
+      // Fetch eligibility
       const res = await fetch(`${API_BASE}/whitelist/check?address=${address}`)
       const data = await res.json()
+      let reasons = []
+      if (Array.isArray(data.reasons)) reasons = data.reasons
+      else if (data.reason) reasons = [data.reason]
+      // If eligible, fetch proof as well
       if (data.eligible) {
         const proofRes = await fetch(`${API_BASE}/merkle_proof?address=${address}`)
         const proofData = await proofRes.json()
@@ -83,18 +108,25 @@ export default function MerkleWhitelistGenerator() {
           eligible: true,
           status: data.status,
           stake: data.stake,
-          reason: data.reason,
+          reasons: [],
           proof: proofData.proof || []
         })
       } else {
         setEligibilityResult({
           eligible: false,
-          reason: data.reason || 'Not eligible'
+          status: data.status,
+          stake: data.stake,
+          reasons
         })
       }
     } catch (err) {
       setError('Eligibility check failed. Check address and try again.')
     }
+  }
+
+  // Copy proof as JSON array
+  function copyProof(proof) {
+    navigator.clipboard.writeText(JSON.stringify(proof))
   }
 
   return (
@@ -154,7 +186,7 @@ export default function MerkleWhitelistGenerator() {
       </div>
 
       {/* Address Checker */}
-      <div className="bg-gray-50 rounded p-4">
+      <div className="bg-gray-50 rounded p-4 mt-8">
         <h2 className="font-semibold mb-2">Check Address</h2>
         <div className="flex gap-2 mb-2">
           <input
@@ -167,27 +199,67 @@ export default function MerkleWhitelistGenerator() {
             Check
           </button>
         </div>
+        {/* Eligibility result with detail */}
         {eligibilityResult && (
-          <div className="text-sm mt-2">
-            {eligibilityResult.eligible ? (
+          <div className="mt-2 border rounded-lg p-4 shadow bg-white">
+            {/* Eligibility status */}
+            <div className="flex items-center gap-4 mb-2">
+              <span
+                className={
+                  'text-xl font-bold ' +
+                  (eligibilityResult.eligible ? 'text-green-700' : 'text-red-700')
+                }
+              >
+                {eligibilityResult.eligible ? 'Eligible' : 'Not eligible'}
+              </span>
+              {/* Status badge */}
+              <span
+                className={
+                  'inline-block px-3 py-1 rounded-full text-xs font-semibold ' +
+                  (statusColors[eligibilityResult.status] || statusColors.Undefined)
+                }
+              >
+                {eligibilityResult.status || 'Unknown'}
+              </span>
+            </div>
+            {/* Stake */}
+            <div className="mb-2">
+              <span className="font-medium">Stake:&nbsp;</span>
+              <span className="font-mono font-semibold">
+                {formatStake(eligibilityResult.stake)}
+              </span>
+            </div>
+            {/* Not eligible: list all exclusion reasons */}
+            {!eligibilityResult.eligible && (
               <div>
-                <span className="text-green-700 font-semibold">Eligible</span> –
-                Status: {eligibilityResult.status}, Stake: {eligibilityResult.stake}
-                <br />
-                <span>Merkle Proof:</span>
-                <ul className="font-mono">
-                  {eligibilityResult.proof.map((h, i) => (
-                    <li key={i}>{h}</li>
-                  ))}
+                <div className="font-semibold text-red-700">Exclusion reason(s):</div>
+                <ul className="list-disc pl-6 text-sm">
+                  {eligibilityResult.reasons?.length ? (
+                    eligibilityResult.reasons.map((r, i) => <li key={i}>{r}</li>)
+                  ) : (
+                    <li>No reason given</li>
+                  )}
                 </ul>
               </div>
-            ) : (
-              <span className="text-red-700">
-                Not eligible – {eligibilityResult.reason}
-              </span>
+            )}
+            {/* Eligible: Merkle proof display + copy button */}
+            {eligibilityResult.eligible && (
+              <div>
+                <div className="font-semibold mt-2">Merkle Proof:</div>
+                <pre className="bg-gray-100 rounded p-2 text-xs max-h-32 overflow-x-auto mb-1">
+                  {JSON.stringify(eligibilityResult.proof, null, 2)}
+                </pre>
+                <button
+                  className="btn btn-outline btn-xs"
+                  onClick={() => copyProof(eligibilityResult.proof)}
+                >
+                  Copy Merkle Proof
+                </button>
+              </div>
             )}
           </div>
         )}
+        {error && <div className="text-red-600 mt-2">{error}</div>}
       </div>
     </div>
   )
