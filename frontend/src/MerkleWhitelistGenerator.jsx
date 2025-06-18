@@ -1,44 +1,100 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 
 // If using Tailwind or shadcn/ui, import here
 
 export default function MerkleWhitelistGenerator() {
   // State variables
   const [merkleRoot, setMerkleRoot] = useState('')
+  const [epoch, setEpoch] = useState(null)
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(false)
   const [address, setAddress] = useState('')
   const [eligibilityResult, setEligibilityResult] = useState(null)
+  const [error, setError] = useState(null)
+  const eventSourceRef = useRef(null)
 
-  // Stub: Trigger whitelist generation (replace with real fetch later)
-  const handleGenerate = (source) => {
+  // Utility to append a log line
+  const appendLog = (line) => setLogs((prev) => [...prev, line])
+
+  // Backend URL base (adjust as needed)
+  const API_BASE = 'http://localhost:3030'
+
+  // Start Merkle root generation with log streaming
+  const handleGenerate = async (source) => {
     setLoading(true)
     setLogs([])
     setMerkleRoot('')
-    // Simulate log streaming and root generation
-    setTimeout(() => {
-      setLogs([
-        'Fetching identities...',
-        'Filtering 500 -> 230 eligible...',
-        'Computing Merkle root...',
-        'Done!'
-      ])
-      setMerkleRoot('0x1234abcd...') // stub
+    setEpoch(null)
+    setError(null)
+
+    try {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+      }
+      const es = new window.EventSource(`${API_BASE}/logs/stream`)
+      eventSourceRef.current = es
+      es.onmessage = (event) => {
+        const data = event.data
+        if (data === '[DONE]') {
+          es.close()
+          fetchMerkleRoot()
+          setLoading(false)
+        } else {
+          appendLog(data)
+        }
+      }
+      es.onerror = () => {
+        es.close()
+        appendLog('[Error: log stream failed, fallback to polling logs endpoint or check backend]')
+        setLoading(false)
+      }
+
+      await fetch(`${API_BASE}/generate_merkle?source=${source}`, { method: 'POST' })
+    } catch (err) {
+      setError('Failed to start whitelist generation')
       setLoading(false)
-    }, 1200)
+    }
   }
 
-  // Stub: Address check (replace with fetch to /whitelist/check)
-  const handleCheck = () => {
+  // Fetch Merkle root and epoch after generation
+  const fetchMerkleRoot = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/merkle_root`)
+      const data = await res.json()
+      setMerkleRoot(data.merkle_root || '')
+      setEpoch(data.epoch || null)
+      appendLog(`[Merkle Root]: ${data.merkle_root} (Epoch ${data.epoch})`)
+    } catch (err) {
+      appendLog('[Error: Failed to fetch Merkle root]')
+    }
+  }
+
+  // Address eligibility and proof check
+  const handleCheck = async () => {
     setEligibilityResult(null)
-    setTimeout(() => {
-      setEligibilityResult({
-        eligible: true,
-        status: 'Human',
-        stake: '20,500 iDNA',
-        proof: ['0xaaa...', '0xbbb...'] // stub
-      })
-    }, 800)
+    setError(null)
+    try {
+      const res = await fetch(`${API_BASE}/whitelist/check?address=${address}`)
+      const data = await res.json()
+      if (data.eligible) {
+        const proofRes = await fetch(`${API_BASE}/merkle_proof?address=${address}`)
+        const proofData = await proofRes.json()
+        setEligibilityResult({
+          eligible: true,
+          status: data.status,
+          stake: data.stake,
+          reason: data.reason,
+          proof: proofData.proof || []
+        })
+      } else {
+        setEligibilityResult({
+          eligible: false,
+          reason: data.reason || 'Not eligible'
+        })
+      }
+    } catch (err) {
+      setError('Eligibility check failed. Check address and try again.')
+    }
   }
 
   return (
@@ -126,7 +182,9 @@ export default function MerkleWhitelistGenerator() {
                 </ul>
               </div>
             ) : (
-              <span className="text-red-700">Not eligible</span>
+              <span className="text-red-700">
+                Not eligible – {eligibilityResult.reason}
+              </span>
             )}
           </div>
         )}
