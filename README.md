@@ -16,6 +16,7 @@ This project is a Go backend for verifying Idena identities and building whiteli
 - **Merkle Tree Proofs:** `/merkle_root` returns the Merkle root of the current whitelist. `/merkle_proof?address=...` returns a Merkle proof for a given address (if that address is in the current whitelist).
 - **Identity Indexer (Rolling):** A built-in indexer under `rolling_indexer/` continuously polls identity data from an Idena node, stores it in a local SQLite database, and exposes a REST API for identity queries. *(This replaces the need for the external Idena indexer service.)*
 - **Agent Scripts:** Utility scripts under `agents/` (for example, an `identity_fetcher` and a `session_block_finder`) help with data collection and monitoring. These are primarily for bootstrapping or debugging and are optional in normal operation.
+- **Admin Tools:** Experimental React interface for custom eligibility scripting, batch address checks, and webhook integrations. All custom scripts run locally in the browser.
 
 ## Setup & Usage
 
