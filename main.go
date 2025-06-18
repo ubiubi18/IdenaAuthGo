@@ -51,6 +51,9 @@ var (
 	currentWhitelist []string
 	currentEpoch     int
 
+	logSubsMu sync.Mutex
+	logSubs   = map[chan string]struct{}{}
+
 	// identityFetcher can be replaced in tests to avoid network calls
 	identityFetcher func(string) (string, float64) = getIdentity
 )
@@ -63,6 +66,26 @@ type Session struct {
 	IdentityState string
 	Stake         float64
 	Created       int64
+}
+
+// logWriter broadcasts log lines to subscribers while also writing to stdout.
+type logWriter struct{}
+
+func (logWriter) Write(p []byte) (int, error) {
+	line := strings.TrimSpace(string(p))
+	broadcastLog(line)
+	return os.Stdout.Write(p)
+}
+
+func broadcastLog(line string) {
+	logSubsMu.Lock()
+	for ch := range logSubs {
+		select {
+		case ch <- line:
+		default:
+		}
+	}
+	logSubsMu.Unlock()
 }
 
 func getenv(key, fallback string) string {
@@ -119,6 +142,7 @@ func main() {
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetOutput(io.MultiWriter(os.Stdout, logWriter{}))
 	if *indexNow {
 		runIndexerCLI(*epochFlag)
 		return
@@ -177,6 +201,8 @@ func main() {
 	http.HandleFunc("/eligibility", eligibilitySnapshotHandler)
 	http.HandleFunc("/merkle_root", merkleRootHandler)
 	http.HandleFunc("/merkle_proof", merkleProofHandler)
+	http.HandleFunc("/logs/stream", logsStreamHandler)
+	http.HandleFunc("/epochs", epochsHandler)
 	http.HandleFunc("/api/Epoch/Last", epochLastHandler)
 	http.HandleFunc("/api/Identity/", identityHandler)
 
@@ -401,6 +427,26 @@ func getWhitelist() ([]string, error) {
 	wlMu.Unlock()
 	sort.Strings(list)
 	return list, nil
+}
+
+// loadWhitelistData reads addresses and root from a saved whitelist file.
+func loadWhitelistData(epoch int) ([]string, string, error) {
+	path := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", err
+	}
+	var out struct {
+		MerkleRoot string   `json:"merkle_root"`
+		Addresses  []string `json:"addresses"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		// try plain address array
+		if err2 := json.Unmarshal(data, &out.Addresses); err2 != nil {
+			return nil, "", err
+		}
+	}
+	return out.Addresses, out.MerkleRoot, nil
 }
 
 func computeMerkleRoot(list []string) string {
@@ -1001,6 +1047,11 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 	wlMu.RLock()
 	epoch := currentEpoch
 	wlMu.RUnlock()
+	if epStr := r.URL.Query().Get("epoch"); epStr != "" {
+		if ep, err := strconv.Atoi(epStr); err == nil {
+			epoch = ep
+		}
+	}
 	state, stake, penalized, flip, ok := getEpochSnapshot(epoch, addr)
 	if ok {
 		valid = true
@@ -1090,42 +1141,126 @@ func merkleRootHandler(w http.ResponseWriter, r *http.Request) {
 	wlMu.RLock()
 	epoch := currentEpoch
 	wlMu.RUnlock()
+	if epStr := r.URL.Query().Get("epoch"); epStr != "" {
+		if ep, err := strconv.Atoi(epStr); err == nil {
+			epoch = ep
+		}
+	}
+
 	root, ok := getMerkleRoot(epoch)
 	if !ok {
-		list, err := getWhitelist()
+		list, fileRoot, err := loadWhitelistData(epoch)
 		if err != nil {
-			http.Error(w, "server error", 500)
+			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
-		root = computeMerkleRoot(list)
+		if fileRoot != "" {
+			root = fileRoot
+		} else {
+			root = computeMerkleRoot(list)
+		}
+		saveMerkleRoot(epoch, root)
 	}
 	writeJSON(w, map[string]interface{}{"merkle_root": root, "epoch": epoch})
 }
 
 func merkleProofHandler(w http.ResponseWriter, r *http.Request) {
 	addr := r.URL.Query().Get("address")
-	list, err := getWhitelist()
-	if err != nil {
-		http.Error(w, "server error", 500)
-		return
+	wlMu.RLock()
+	epoch := currentEpoch
+	wlMu.RUnlock()
+	if epStr := r.URL.Query().Get("epoch"); epStr != "" {
+		if ep, err := strconv.Atoi(epStr); err == nil {
+			epoch = ep
+		}
+	}
+
+	var list []string
+	var root string
+	var err error
+	if epoch == currentEpoch {
+		list, err = getWhitelist()
+		if err != nil {
+			http.Error(w, "server error", http.StatusInternalServerError)
+			return
+		}
+		root, _ = getMerkleRoot(epoch)
+	} else {
+		list, root, err = loadWhitelistData(epoch)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+	}
+	if root == "" {
+		root = computeMerkleRoot(list)
 	}
 	proof, ok := computeMerkleProof(list, addr)
 	if !ok {
 		http.Error(w, "address not found", http.StatusNotFound)
 		return
 	}
-	wlMu.RLock()
-	epoch := currentEpoch
-	wlMu.RUnlock()
-	root, okR := getMerkleRoot(epoch)
-	if !okR {
-		root = computeMerkleRoot(list)
-	}
 	writeJSON(w, map[string]interface{}{
 		"merkle_root": root,
 		"proof":       proof,
 		"epoch":       epoch,
 	})
+}
+
+func logsStreamHandler(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	ch := make(chan string, 100)
+	logSubsMu.Lock()
+	logSubs[ch] = struct{}{}
+	logSubsMu.Unlock()
+	defer func() {
+		logSubsMu.Lock()
+		delete(logSubs, ch)
+		logSubsMu.Unlock()
+	}()
+
+	ctx := r.Context()
+	for {
+		select {
+		case line := <-ch:
+			fmt.Fprintf(w, "data: %s\n\n", line)
+			flusher.Flush()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func epochsHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT epoch FROM epoch_merkle_roots ORDER BY epoch DESC LIMIT 20")
+	if err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var eps []int
+	for rows.Next() {
+		var e int
+		if err := rows.Scan(&e); err == nil {
+			eps = append(eps, e)
+		}
+	}
+	if len(eps) == 0 {
+		wlMu.RLock()
+		cur := currentEpoch
+		wlMu.RUnlock()
+		for i := 0; i < 10 && cur-i > 0; i++ {
+			eps = append(eps, cur-i)
+		}
+	}
+	writeJSON(w, eps)
 }
 
 // Verify Ethereum signature from Idena App
