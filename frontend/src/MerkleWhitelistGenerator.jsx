@@ -1,23 +1,86 @@
-import React, { useState, useRef } from 'react'
+// Settings panel: API URL and epoch, robust error boundary, dark mode
+/*
+# Epoch-aware API download example
+curl 'http://localhost:3030/whitelist/epoch/123' > whitelist_epoch123.json
+*/
 
-// If using Tailwind or shadcn/ui, import here
+import React, { useState, useRef, useEffect } from 'react'
+
+// Error Boundary to catch render/runtime errors
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, errorInfo) {
+    // log error or send to analytics
+    console.error(error, errorInfo)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-red-100 border border-red-300 rounded p-8 mt-8 text-red-800">
+          <h2 className="text-xl font-bold mb-2">An error occurred.</h2>
+          <div className="mb-4">{this.state.error?.message || String(this.state.error)}</div>
+          <button
+            className="btn btn-accent"
+            onClick={() => window.location.reload()}
+          >
+            Reload App
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+// Minimal toast popup
+function Toast({ message, type, onClose }) {
+  if (!message) return null
+  const color = type === 'success' ? 'bg-green-600' : 'bg-red-700'
+  return (
+    <div className={`fixed top-4 right-4 z-50 rounded text-white px-4 py-2 shadow-lg ${color}`}>
+      {message}
+      <button className="ml-4 text-lg" onClick={onClose}>×</button>
+    </div>
+  )
+}
 
 export default function MerkleWhitelistGenerator() {
-  // State variables
-  const [merkleRoot, setMerkleRoot] = useState('')
+  // --- Settings state ---
+  const [apiBase, setApiBase] = useState(
+    localStorage.getItem('idenaApiBase') || 'http://localhost:3030'
+  )
   const [epoch, setEpoch] = useState(null)
+  const [customEpoch, setCustomEpoch] = useState('')
+  const [apiStatus, setApiStatus] = useState(null) // 'ok' | 'error' | null
+  const [darkMode, setDarkMode] = useState(
+    localStorage.getItem('darkMode') === 'true'
+  )
+
+  // --- UI state ---
+  const [merkleRoot, setMerkleRoot] = useState('')
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(false)
   const [address, setAddress] = useState('')
   const [eligibilityResult, setEligibilityResult] = useState(null)
   const [error, setError] = useState(null)
+  const [toast, setToast] = useState({ message: '', type: 'success' })
+  const [whitelistData, setWhitelistData] = useState(null)
+  const logRef = useRef(null)
   const eventSourceRef = useRef(null)
 
   // Utility to append a log line
-  const appendLog = (line) => setLogs((prev) => [...prev, line])
-
-  // Backend URL base (adjust as needed)
-  const API_BASE = 'http://localhost:3030'
+  const appendLog = (line) => {
+    setLogs((prev) => [...prev, line])
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight
+    }
+  }
 
   // Color map for status badges
   const statusColors = {
@@ -39,19 +102,46 @@ export default function MerkleWhitelistGenerator() {
     )
   }
 
-  // Start Merkle root generation with log streaming
+  // --- Dark mode handling ---
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('darkMode', 'true')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('darkMode', 'false')
+    }
+  }, [darkMode])
+
+  // --- API status ping ---
+  useEffect(() => {
+    setApiStatus(null)
+    fetch(`${apiBase}/merkle_root`)
+      .then(res => res.ok ? setApiStatus('ok') : setApiStatus('error'))
+      .catch(() => setApiStatus('error'))
+  }, [apiBase])
+
+  // --- Save API base ---
+  const handleApiBaseChange = (v) => {
+    setApiBase(v)
+    localStorage.setItem('idenaApiBase', v)
+  }
+
+  // --- Epoch handling ---
+  const epochParam = customEpoch.trim() ? Number(customEpoch.trim()) : null
+
+  // --- Whitelist generation with log streaming ---
   const handleGenerate = async (source) => {
     setLoading(true)
     setLogs([])
     setMerkleRoot('')
     setEpoch(null)
     setError(null)
-
     try {
       if (eventSourceRef.current) {
         eventSourceRef.current.close()
       }
-      const es = new window.EventSource(`${API_BASE}/logs/stream`)
+      const es = new window.EventSource(`${apiBase}/logs/stream`)
       eventSourceRef.current = es
       es.onmessage = (event) => {
         const data = event.data
@@ -68,18 +158,17 @@ export default function MerkleWhitelistGenerator() {
         appendLog('[Error: log stream failed, fallback to polling logs endpoint or check backend]')
         setLoading(false)
       }
-
-      await fetch(`${API_BASE}/generate_merkle?source=${source}`, { method: 'POST' })
+      await fetch(`${apiBase}/generate_merkle?source=${source}`, { method: 'POST' })
     } catch (err) {
       setError('Failed to start whitelist generation')
       setLoading(false)
     }
   }
 
-  // Fetch Merkle root and epoch after generation
+  // --- Fetch Merkle root after generation ---
   const fetchMerkleRoot = async () => {
     try {
-      const res = await fetch(`${API_BASE}/merkle_root`)
+      const res = await fetch(`${apiBase}/merkle_root`)
       const data = await res.json()
       setMerkleRoot(data.merkle_root || '')
       setEpoch(data.epoch || null)
@@ -89,20 +178,18 @@ export default function MerkleWhitelistGenerator() {
     }
   }
 
-  // Address eligibility and proof check with reason/explanations
+  // --- Address eligibility and proof check ---
   const handleCheck = async () => {
     setEligibilityResult(null)
     setError(null)
     try {
-      // Fetch eligibility
-      const res = await fetch(`${API_BASE}/whitelist/check?address=${address}`)
+      const res = await fetch(`${apiBase}/whitelist/check?address=${address}` + (epochParam ? `&epoch=${epochParam}` : ''))
       const data = await res.json()
       let reasons = []
       if (Array.isArray(data.reasons)) reasons = data.reasons
       else if (data.reason) reasons = [data.reason]
-      // If eligible, fetch proof as well
       if (data.eligible) {
-        const proofRes = await fetch(`${API_BASE}/merkle_proof?address=${address}`)
+        const proofRes = await fetch(`${apiBase}/merkle_proof?address=${address}` + (epochParam ? `&epoch=${epochParam}` : ''))
         const proofData = await proofRes.json()
         setEligibilityResult({
           eligible: true,
@@ -124,143 +211,243 @@ export default function MerkleWhitelistGenerator() {
     }
   }
 
-  // Copy proof as JSON array
+  // --- Fetch whitelist as file ---
+  const fetchWhitelist = async () => {
+    try {
+      const url = epochParam
+        ? `${apiBase}/whitelist/epoch/${epochParam}`
+        : `${apiBase}/whitelist/current`
+      const res = await fetch(url)
+      const data = await res.json()
+      setWhitelistData(data)
+      setToast({ message: 'Whitelist downloaded', type: 'success' })
+      downloadAsFile(`whitelist_epoch${epochParam || epoch || ''}.json`, data)
+    } catch (e) {
+      setToast({ message: 'Failed to download whitelist', type: 'error' })
+    }
+  }
+
+  // --- Fetch proof as file ---
+  const fetchProof = async () => {
+    try {
+      const url = `${apiBase}/merkle_proof?address=${address}` +
+        (epochParam ? `&epoch=${epochParam}` : '')
+      const res = await fetch(url)
+      const data = await res.json()
+      downloadAsFile(`merkle_proof_${address}_epoch${epochParam || epoch || ''}.json`, data.proof || [])
+      setToast({ message: 'Proof downloaded', type: 'success' })
+    } catch {
+      setToast({ message: 'Failed to download proof', type: 'error' })
+    }
+  }
+
+  // --- Settings Panel UI ---
+  function SettingsPanel() {
+    return (
+      <div className="mb-6 p-3 bg-gray-100 dark:bg-gray-800 rounded flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <label className="font-semibold">API URL:</label>
+          <input
+            className="flex-1 border rounded p-2 dark:bg-gray-900"
+            value={apiBase}
+            onChange={e => handleApiBaseChange(e.target.value)}
+          />
+          <span className={
+            apiStatus === 'ok'
+              ? 'ml-2 text-green-600'
+              : apiStatus === 'error'
+                ? 'ml-2 text-red-700'
+                : 'ml-2 text-gray-500'
+          }>
+            {apiStatus === 'ok' && '✓ Connected'}
+            {apiStatus === 'error' && '⚠ Error'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="font-semibold">Epoch (optional):</label>
+          <input
+            type="number"
+            className="w-28 border rounded p-2 dark:bg-gray-900"
+            placeholder="e.g. 123"
+            value={customEpoch}
+            onChange={e => setCustomEpoch(e.target.value.replace(/[^0-9]/g, ''))}
+          />
+          <span className="ml-2 text-xs text-gray-500">
+            (blank = current)
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="font-semibold">Dark mode:</label>
+          <button
+            className={`px-2 py-1 rounded ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-200'}`}
+            onClick={() => setDarkMode(d => !d)}
+          >
+            {darkMode ? '🌙 Dark' : '☀️ Light'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // --- Download utility ---
+  function downloadAsFile(filename, data) {
+    const blob = new Blob([typeof data === 'string' ? data : JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Copy proof helper
   function copyProof(proof) {
     navigator.clipboard.writeText(JSON.stringify(proof))
   }
 
+  // --- Main UI ---
   return (
-    <div className="max-w-xl mx-auto p-6">
-      {/* Title */}
-      <h1 className="text-2xl font-bold text-center mb-4">
-        Idena Eligibility Discriminator – Generate Whitelist Merkle Root
-      </h1>
-
-      {/* Mode Buttons */}
-      <div className="flex justify-center gap-4 mb-2">
-        <button
-          className="btn btn-primary"
-          disabled={loading}
-          onClick={() => handleGenerate('node')}
-        >
-          From your own node
-        </button>
-        <button
-          className="btn btn-secondary"
-          disabled={loading}
-          onClick={() => handleGenerate('public')}
-        >
-          From the public indexer
-        </button>
-      </div>
-
-      {/* Description */}
-      <div className="text-gray-600 text-center mb-4">
-        Checks and filters Idena identities by PoP rules (status and stake) to generate a deterministic whitelist for the current epoch. The result is a Merkle root and inclusion proofs for eligibility verification. You can use your own node or fall back to a public indexer.
-      </div>
-
-      {/* Live Log Panel */}
-      <div className="bg-black text-green-300 font-mono rounded p-2 h-32 overflow-y-auto mb-4">
-        {logs.length === 0 ? (
-          <span className="opacity-50">Console output will appear here…</span>
-        ) : (
-          logs.map((line, idx) => <div key={idx}>{line}</div>)
-        )}
-      </div>
-
-      {/* Merkle Root Display */}
-      <div className="mb-4 flex items-center gap-2">
-        <input
-          className="flex-1 border rounded p-2"
-          readOnly
-          value={merkleRoot}
-          placeholder="Merkle root will appear here…"
+    <ErrorBoundary>
+      <div className={`max-w-xl mx-auto p-6 ${darkMode ? 'dark bg-gray-900 text-gray-100' : ''}`}>
+        {/* Toast popup */}
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ message: '', type: 'success' })}
         />
-        <button
-          className="btn btn-outline"
-          disabled={!merkleRoot}
-          onClick={() => navigator.clipboard.writeText(merkleRoot)}
-        >
-          Copy
-        </button>
-      </div>
 
-      {/* Address Checker */}
-      <div className="bg-gray-50 rounded p-4 mt-8">
-        <h2 className="font-semibold mb-2">Check Address</h2>
-        <div className="flex gap-2 mb-2">
-          <input
-            className="flex-1 border rounded p-2"
-            placeholder="0x..."
-            value={address}
-            onChange={e => setAddress(e.target.value)}
-          />
-          <button className="btn btn-accent" onClick={handleCheck}>
-            Check
+        {/* Settings Panel */}
+        <SettingsPanel />
+
+        {/* Title */}
+        <h1 className="text-2xl font-bold text-center mb-4">
+          Idena Eligibility Discriminator – Generate Whitelist Merkle Root
+        </h1>
+
+        {/* Mode Buttons */}
+        <div className="flex justify-center gap-4 mb-2">
+          <button
+            className="btn btn-primary"
+            disabled={loading}
+            onClick={() => handleGenerate('node')}
+          >
+            From your own node
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={loading}
+            onClick={() => handleGenerate('public')}
+          >
+            From the public indexer
           </button>
         </div>
-        {/* Eligibility result with detail */}
-        {eligibilityResult && (
-          <div className="mt-2 border rounded-lg p-4 shadow bg-white">
-            {/* Eligibility status */}
-            <div className="flex items-center gap-4 mb-2">
-              <span
-                className={
-                  'text-xl font-bold ' +
-                  (eligibilityResult.eligible ? 'text-green-700' : 'text-red-700')
-                }
-              >
-                {eligibilityResult.eligible ? 'Eligible' : 'Not eligible'}
-              </span>
-              {/* Status badge */}
-              <span
-                className={
-                  'inline-block px-3 py-1 rounded-full text-xs font-semibold ' +
-                  (statusColors[eligibilityResult.status] || statusColors.Undefined)
-                }
-              >
-                {eligibilityResult.status || 'Unknown'}
-              </span>
-            </div>
-            {/* Stake */}
-            <div className="mb-2">
-              <span className="font-medium">Stake:&nbsp;</span>
-              <span className="font-mono font-semibold">
-                {formatStake(eligibilityResult.stake)}
-              </span>
-            </div>
-            {/* Not eligible: list all exclusion reasons */}
-            {!eligibilityResult.eligible && (
-              <div>
-                <div className="font-semibold text-red-700">Exclusion reason(s):</div>
-                <ul className="list-disc pl-6 text-sm">
-                  {eligibilityResult.reasons?.length ? (
-                    eligibilityResult.reasons.map((r, i) => <li key={i}>{r}</li>)
-                  ) : (
-                    <li>No reason given</li>
-                  )}
-                </ul>
-              </div>
-            )}
-            {/* Eligible: Merkle proof display + copy button */}
-            {eligibilityResult.eligible && (
-              <div>
-                <div className="font-semibold mt-2">Merkle Proof:</div>
-                <pre className="bg-gray-100 rounded p-2 text-xs max-h-32 overflow-x-auto mb-1">
-                  {JSON.stringify(eligibilityResult.proof, null, 2)}
-                </pre>
-                <button
-                  className="btn btn-outline btn-xs"
-                  onClick={() => copyProof(eligibilityResult.proof)}
-                >
-                  Copy Merkle Proof
-                </button>
-              </div>
-            )}
+
+        {/* Description */}
+        <div className="text-gray-600 dark:text-gray-300 text-center mb-4">
+          Checks and filters Idena identities by PoP rules (status and stake) to generate a deterministic whitelist for the current epoch. The result is a Merkle root and inclusion proofs for eligibility verification. You can use your own node or fall back to a public indexer.
+        </div>
+
+        {/* Live Log Panel */}
+        <div ref={logRef} className="bg-black text-green-300 font-mono rounded p-2 h-32 overflow-y-auto mb-4">
+          {logs.length === 0 ? (
+            <span className="opacity-50">Console output will appear here…</span>
+          ) : (
+            logs.map((line, idx) => <div key={idx}>{line}</div>)
+          )}
+        </div>
+
+        {/* Merkle Root Display */}
+        <div className="mb-4 flex items-center gap-2">
+          <input
+            className="flex-1 border rounded p-2 dark:bg-gray-800"
+            readOnly
+            value={merkleRoot}
+            placeholder="Merkle root will appear here…"
+          />
+          <button
+            className="btn btn-outline"
+            disabled={!merkleRoot}
+            onClick={() => navigator.clipboard.writeText(merkleRoot)}
+          >
+            Copy
+          </button>
+        </div>
+        <div className="flex gap-2 mb-4">
+          <button className="btn btn-outline" onClick={fetchWhitelist} disabled={loading}>Download Whitelist</button>
+          <button className="btn btn-outline" onClick={fetchProof} disabled={!address}>Download Proof</button>
+        </div>
+
+        {/* Address Checker */}
+        <div className="bg-gray-50 dark:bg-gray-800 rounded p-4 mt-8">
+          <h2 className="font-semibold mb-2">Check Address</h2>
+          <div className="flex gap-2 mb-2">
+            <input
+              className="flex-1 border rounded p-2 dark:bg-gray-900"
+              placeholder="0x..."
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+            />
+            <button className="btn btn-accent" onClick={handleCheck}>
+              Check
+            </button>
           </div>
-        )}
-        {error && <div className="text-red-600 mt-2">{error}</div>}
+          {eligibilityResult && (
+            <div className="mt-2 border rounded-lg p-4 shadow bg-white dark:bg-gray-900">
+              <div className="flex items-center gap-4 mb-2">
+                <span
+                  className={
+                    'text-xl font-bold ' +
+                    (eligibilityResult.eligible ? 'text-green-700' : 'text-red-700')
+                  }
+                >
+                  {eligibilityResult.eligible ? 'Eligible' : 'Not eligible'}
+                </span>
+                <span
+                  className={
+                    'inline-block px-3 py-1 rounded-full text-xs font-semibold ' +
+                    (statusColors[eligibilityResult.status] || statusColors.Undefined)
+                  }
+                >
+                  {eligibilityResult.status || 'Unknown'}
+                </span>
+              </div>
+              <div className="mb-2">
+                <span className="font-medium">Stake:&nbsp;</span>
+                <span className="font-mono font-semibold">
+                  {formatStake(eligibilityResult.stake)}
+                </span>
+              </div>
+              {!eligibilityResult.eligible && (
+                <div>
+                  <div className="font-semibold text-red-700">Exclusion reason(s):</div>
+                  <ul className="list-disc pl-6 text-sm">
+                    {eligibilityResult.reasons?.length ? (
+                      eligibilityResult.reasons.map((r, i) => <li key={i}>{r}</li>)
+                    ) : (
+                      <li>No reason given</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+              {eligibilityResult.eligible && (
+                <div>
+                  <div className="font-semibold mt-2">Merkle Proof:</div>
+                  <pre className="bg-gray-100 dark:bg-gray-700 rounded p-2 text-xs max-h-32 overflow-x-auto mb-1">
+                    {JSON.stringify(eligibilityResult.proof, null, 2)}
+                  </pre>
+                  <button
+                    className="btn btn-outline btn-xs"
+                    onClick={() => copyProof(eligibilityResult.proof)}
+                  >
+                    Copy Merkle Proof
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {error && <div className="text-red-600 mt-2">{error}</div>}
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   )
 }
