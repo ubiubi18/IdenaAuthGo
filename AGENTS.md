@@ -26,6 +26,8 @@ cd agents
 go run identity_fetcher.go agents/config.json
 ```
 
+The Idena node expects your API key in the `key` field of each JSON-RPC request body. HTTP headers like `Authorization` are ignored.
+
 This will periodically contact your Idena node to get the identity information for each address in your list (using a public fallback API for any addresses not recognized by your node). The snapshot is written to `data/whitelist_epoch_<N>.json`, where `<N>` is the current epoch.
 
     Usage Note: In the context of IdenaAuthGo, running this agent was originally a way to feed data into the whitelist system before the rolling indexer existed. Now that the rolling indexer is available and actively maintained, you typically do not need to use the identity_fetcher for the main whitelist – the indexer will gather all identities automatically. However, the fetcher can still be useful for one-off data collection or to quickly bootstrap the database with a known set of addresses. (The main application can read the generated snapshot file if configured to do so, but by default it expects the rolling indexer to be running.) 

@@ -57,6 +57,16 @@ export IDENA_RPC_KEY="your_idena_node_api_key"
 
 Note: The IDENA_RPC_KEY is only needed if your Idena node’s API is protected by a key. If the node’s HTTP API is open or uses default settings on localhost, you can omit this.
 
+The Idena node expects the API key to be included in each JSON-RPC request as a `key` field inside the JSON body. HTTP headers such as `Authorization` or `api-key` are ignored. Example:
+
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{"method":"bcn_lastBlock","params":[],"id":1,"key":"YOUR_API_KEY","jsonrpc":"2.0"}' \
+  http://127.0.0.1:9009
+```
+
+Do not send the key in an HTTP header; it must be part of the JSON-RPC payload.
+
 ### 4. Run the Web Server (Main API)
 
 Use Go to run the main server:
