@@ -3,7 +3,6 @@
     "interval_minutes": 60,
     "node_url": "http://localhost:9009",
     "api_key": "YOUR_API_KEY_HERE",
-    "snapshot_file": "data/identities_snapshot.json",
     "address_list_file": "data/address_list.txt"
   },
   "session-block-finder": {

@@ -4,12 +4,43 @@ package agents
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"time"
 )
+
+// GetCurrentEpoch queries the node for the current epoch.
+func GetCurrentEpoch(nodeURL, apiKey string) (int, error) {
+	reqData := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "bcn_epoch",
+		"params":  []interface{}{},
+		"id":      1,
+	}
+	if apiKey != "" {
+		reqData["key"] = apiKey
+	}
+	body, _ := json.Marshal(reqData)
+	req, _ := http.NewRequest("POST", nodeURL, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	var rpcResp struct {
+		Result struct {
+			Epoch int `json:"epoch"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return 0, err
+	}
+	return rpcResp.Result.Epoch, nil
+}
 
 type Identity struct {
 	Address string  `json:"address"`
@@ -22,7 +53,6 @@ type FetcherConfig struct {
 	IntervalMinutes int    `json:"interval_minutes"`
 	NodeURL         string `json:"node_url"`
 	ApiKey          string `json:"api_key"`
-	SnapshotFile    string `json:"snapshot_file"`
 	AddressListFile string `json:"address_list_file"`
 }
 
@@ -99,6 +129,15 @@ func RunIdentityFetcherWithConfig(cfg *FetcherConfig) {
 			time.Sleep(time.Duration(cfg.IntervalMinutes) * time.Minute)
 			continue
 		}
+
+		epoch, err := GetCurrentEpoch(cfg.NodeURL, cfg.ApiKey)
+		if err != nil {
+			log.Printf("[AGENT][Fetcher] Could not fetch epoch: %v", err)
+			time.Sleep(time.Duration(cfg.IntervalMinutes) * time.Minute)
+			continue
+		}
+		outputPath := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
+
 		var snapshot []Identity
 		for _, addr := range addresses {
 			id, err := FetchIdentity(addr, cfg.NodeURL, cfg.ApiKey)
@@ -109,8 +148,8 @@ func RunIdentityFetcherWithConfig(cfg *FetcherConfig) {
 			snapshot = append(snapshot, *id)
 		}
 		snapBytes, _ := json.MarshalIndent(snapshot, "", "  ")
-		os.WriteFile(cfg.SnapshotFile, snapBytes, 0644)
-		log.Printf("[AGENT][Fetcher] Wrote snapshot to %s (%d identities)", cfg.SnapshotFile, len(snapshot))
+		os.WriteFile(outputPath, snapBytes, 0644)
+		log.Printf("[AGENT][Fetcher] Wrote snapshot to %s (%d identities)", outputPath, len(snapshot))
 		time.Sleep(time.Duration(cfg.IntervalMinutes) * time.Minute)
 	}
 }
