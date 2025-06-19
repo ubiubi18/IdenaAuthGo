@@ -165,7 +165,7 @@ Prepare the configuration:
 cp agents/fetcher_config.example.json agents/config.json
 ```
 
-Open `agents/config.json` in an editor and set the fields according to your needs (RPC node URL, API key, input addresses file, output snapshot file, etc.).
+Open `agents/config.json` in an editor and set the fields according to your needs (RPC node URL, API key, and the path to your address list).
 
 Run the fetcher:
 
@@ -174,9 +174,7 @@ cd agents
 go run identity_fetcher.go agents/config.json
 ```
 
-The agent will contact your Idena node (and/or a public API for any addresses your node doesn’t know about) at the interval you specified, and update the `snapshot_file` with the latest identities data for the addresses in your list.
-
-The output JSON (by default `snapshot.json` in the `agents` directory) can then be used by the main application to compute a whitelist if needed. In practice, if you have the rolling indexer running, that indexer’s database supersedes this snapshot mechanism.
+The agent will contact your Idena node (and/or a public API for any addresses your node doesn’t know about) at the interval you specified. The resulting snapshot is written to `data/whitelist_epoch_<N>.json`, where `<N>` is the current epoch number. This file can be used by the main application to compute a whitelist if needed. In practice, if you have the rolling indexer running, that indexer’s database supersedes this snapshot mechanism.
 
 ### 7. (Optional) Session Start Block Finder
 
