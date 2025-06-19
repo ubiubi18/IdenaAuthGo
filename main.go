@@ -34,9 +34,10 @@ var (
 	IDENA_RPC_KEY = getenv("IDENA_RPC_KEY", "")
 )
 
+var port = flag.Int("port", 3030, "Port to run the HTTP server on")
+
 const (
 	sessionDuration = 60 * 60 // Session duration in seconds
-	listenAddr      = ":3030"
 	dbFile          = "./sessions.db"
 	idenaRpcUrl     = "http://localhost:9009"
 	fallbackApiUrl  = "https://api.idena.io"
@@ -207,8 +208,8 @@ func main() {
 	http.HandleFunc("/api/Identity/", identityHandler)
 
 	go cleanupExpiredSessions()
-	log.Printf("Server running at http://localhost%s", listenAddr)
-	if err := http.ListenAndServe(listenAddr, nil); err != nil {
+	log.Printf("Server running at http://localhost:%d", *port)
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil); err != nil {
 		log.Fatal(err)
 	}
 }
