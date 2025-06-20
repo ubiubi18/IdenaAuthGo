@@ -1166,7 +1166,19 @@ func merkleRootHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func merkleProofHandler(w http.ResponseWriter, r *http.Request) {
-	addr := r.URL.Query().Get("address")
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("[MERKLE_PROOF][PANIC] %v\n%s", rec, debug.Stack())
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
+	}()
+
+	addr := strings.ToLower(r.URL.Query().Get("address"))
+	if addr == "" {
+		http.Error(w, "missing address", http.StatusBadRequest)
+		return
+	}
+
 	wlMu.RLock()
 	epoch := currentEpoch
 	wlMu.RUnlock()
@@ -1196,11 +1208,13 @@ func merkleProofHandler(w http.ResponseWriter, r *http.Request) {
 	if root == "" {
 		root = computeMerkleRoot(list)
 	}
+
 	proof, ok := computeMerkleProof(list, addr)
 	if !ok {
 		http.Error(w, "address not found", http.StatusNotFound)
 		return
 	}
+
 	writeJSON(w, map[string]interface{}{
 		"merkle_root": root,
 		"proof":       proof,
