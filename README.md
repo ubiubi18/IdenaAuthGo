@@ -180,11 +180,20 @@ Open `agents/config.json` in an editor and set the fields according to your need
 Run the fetcher:
 
 ```bash
-cd agents
-go run identity_fetcher.go agents/config.json
+go run cmd/fetcher/main.go -config agents/config.json
 ```
 
-The agent will contact your Idena node (and/or a public API for any addresses your node doesn’t know about) at the interval you specified. The resulting snapshot is written to `data/whitelist_epoch_<N>.json`, where `<N>` is the current epoch number. This file can be used by the main application to compute a whitelist if needed. In practice, if you have the rolling indexer running, that indexer’s database supersedes this snapshot mechanism.
+The command automatically queries your node for the current epoch and writes
+`data/whitelist_epoch_<N>.json` (where `<N>` is the epoch number). Run this
+periodically – for example via cron – to keep the snapshot fresh. If you’re
+running the rolling indexer you can skip this step, as the indexer provides the
+same data automatically.
+
+Example hourly cron entry:
+
+```
+0 * * * * cd /path/to/IdenaAuthGo && /usr/local/go/bin/go run cmd/fetcher/main.go -config agents/config.json >> fetcher.log 2>&1
+```
 
 ### 7. (Optional) Session Start Block Finder
 

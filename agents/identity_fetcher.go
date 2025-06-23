@@ -122,34 +122,57 @@ func RunIdentityFetcher(configPath string) {
 // RunIdentityFetcherWithConfig executes the fetcher loop using the provided configuration.
 func RunIdentityFetcherWithConfig(cfg *FetcherConfig) {
 	for {
-		log.Println("[AGENT][Fetcher] Starting new fetch cycle...")
-		addresses, err := LoadAddressList(cfg.AddressListFile)
-		if err != nil {
-			log.Printf("[AGENT][Fetcher] Could not load addresses: %v", err)
-			time.Sleep(time.Duration(cfg.IntervalMinutes) * time.Minute)
-			continue
+		if err := RunIdentityFetcherOnce(cfg); err != nil {
+			log.Printf("[AGENT][Fetcher] cycle error: %v", err)
 		}
-
-		epoch, err := GetCurrentEpoch(cfg.NodeURL, cfg.ApiKey)
-		if err != nil {
-			log.Printf("[AGENT][Fetcher] Could not fetch epoch: %v", err)
-			time.Sleep(time.Duration(cfg.IntervalMinutes) * time.Minute)
-			continue
-		}
-		outputPath := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
-
-		var snapshot []Identity
-		for _, addr := range addresses {
-			id, err := FetchIdentity(addr, cfg.NodeURL, cfg.ApiKey)
-			if err != nil {
-				log.Printf("[AGENT][Fetcher] Error for %s: %v", addr, err)
-				continue
-			}
-			snapshot = append(snapshot, *id)
-		}
-		snapBytes, _ := json.MarshalIndent(snapshot, "", "  ")
-		os.WriteFile(outputPath, snapBytes, 0644)
-		log.Printf("[AGENT][Fetcher] Wrote snapshot to %s (%d identities)", outputPath, len(snapshot))
 		time.Sleep(time.Duration(cfg.IntervalMinutes) * time.Minute)
 	}
+}
+
+// RunIdentityFetcherOnce performs a single snapshot fetch using the provided configuration.
+// It returns an error if any step (loading addresses, contacting the node, or writing the file)
+// fails.
+func RunIdentityFetcherOnce(cfg *FetcherConfig) error {
+	log.Printf("[AGENT][Fetcher] loading addresses from %s", cfg.AddressListFile)
+	addresses, err := LoadAddressList(cfg.AddressListFile)
+	if err != nil {
+		return fmt.Errorf("load address list: %w", err)
+	}
+	log.Printf("[AGENT][Fetcher] loaded %d addresses", len(addresses))
+
+	epoch, err := GetCurrentEpoch(cfg.NodeURL, cfg.ApiKey)
+	if err != nil {
+		return fmt.Errorf("get current epoch: %w", err)
+	}
+	log.Printf("[AGENT][Fetcher] current epoch %d", epoch)
+	outputPath := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
+	log.Printf("[AGENT][Fetcher] output file %s", outputPath)
+
+	var snapshot []Identity
+	for _, addr := range addresses {
+		id, err := FetchIdentity(addr, cfg.NodeURL, cfg.ApiKey)
+		if err != nil {
+			log.Printf("[AGENT][Fetcher] fetch %s: %v", addr, err)
+			continue
+		}
+		snapshot = append(snapshot, *id)
+	}
+	snapBytes, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal snapshot: %w", err)
+	}
+	if err := os.WriteFile(outputPath, snapBytes, 0644); err != nil {
+		return fmt.Errorf("write snapshot: %w", err)
+	}
+	log.Printf("[AGENT][Fetcher] wrote snapshot with %d addresses", len(snapshot))
+	return nil
+}
+
+// RunIdentityFetcherAutoEpoch loads the config and executes a single fetch for the current epoch.
+func RunIdentityFetcherAutoEpoch(configPath string) error {
+	cfg, err := LoadFetcherConfig(configPath)
+	if err != nil {
+		return err
+	}
+	return RunIdentityFetcherOnce(cfg)
 }
