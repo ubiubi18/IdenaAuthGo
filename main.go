@@ -977,13 +977,60 @@ func whitelistHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"addresses": list})
 }
 
+// whitelistCurrentHandler returns the whitelist file for the node's current epoch.
+// It queries the local Idena node via JSON-RPC (dna_epoch) to determine the
+// epoch, then serves the corresponding snapshot file. All steps are logged so
+// that issues can be diagnosed easily.
 func whitelistCurrentHandler(w http.ResponseWriter, r *http.Request) {
-	list, err := getWhitelist()
+	// Log request with timestamp and path
+	log.Printf("[WHITELIST][CURRENT] %s %s", time.Now().Format(time.RFC3339), r.URL.Path)
+
+	// Build JSON-RPC request to fetch the current epoch from the node
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "dna_epoch",
+		"id":      1,
+	}
+	if IDENA_RPC_KEY != "" {
+		reqBody["key"] = IDENA_RPC_KEY // include API key if configured
+	}
+	b, _ := json.Marshal(reqBody)
+	resp, err := http.Post("http://127.0.0.1:9009", "application/json", bytes.NewReader(b))
 	if err != nil {
-		http.Error(w, "server error", 500)
+		log.Printf("[WHITELIST][CURRENT][ERROR] epoch RPC request failed: %v", err)
+		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, map[string]interface{}{"addresses": list, "epoch": currentEpoch})
+	defer resp.Body.Close()
+
+	// Parse the epoch from the RPC response
+	var rpcResp struct {
+		Result struct {
+			Epoch int `json:"epoch"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		log.Printf("[WHITELIST][CURRENT][ERROR] decoding epoch response: %v", err)
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	epoch := rpcResp.Result.Epoch
+	log.Printf("[WHITELIST][CURRENT] fetched epoch=%d", epoch)
+
+	// Construct the file path for this epoch's whitelist
+	path := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
+	log.Printf("[WHITELIST][CURRENT] path=%s", path)
+
+	// Read and return the file. Errors are logged and reported as 500.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("[WHITELIST][CURRENT][ERROR] reading %s: %v", path, err)
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
 }
 
 func whitelistEpochHandler(w http.ResponseWriter, r *http.Request) {
