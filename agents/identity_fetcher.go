@@ -20,7 +20,7 @@ const defaultIndexerURL = "http://localhost:8080/api/whitelist/current"
 func GetCurrentEpoch(nodeURL, apiKey string) (int, error) {
 	reqData := map[string]interface{}{
 		"jsonrpc": "2.0",
-		"method":  "bcn_epoch",
+		"method":  "dna_epoch",
 		"params":  []interface{}{},
 		"id":      1,
 	}
@@ -37,7 +37,10 @@ func GetCurrentEpoch(nodeURL, apiKey string) (int, error) {
 	defer resp.Body.Close()
 	var rpcResp struct {
 		Result struct {
-			Epoch int `json:"epoch"`
+			StartBlock     int    `json:"startBlock"`
+			Epoch          int    `json:"epoch"`
+			NextValidation string `json:"nextValidation"`
+			CurrentPeriod  string `json:"currentPeriod"`
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
