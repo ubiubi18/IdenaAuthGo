@@ -34,5 +34,5 @@ func main() {
 		agents.RunSessionBlockFinderWithConfig(&cfg.SessionFinder)
 		return
 	}
-	agents.RunIdentityFetcherWithConfig(&cfg.Fetcher)
+	agents.RunIdentityFetcherWithConfig(&cfg.Fetcher, "")
 }

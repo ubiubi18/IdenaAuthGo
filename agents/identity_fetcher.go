@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+// defaultIndexerURL is the local rolling indexer endpoint that returns the
+// current whitelist. It is used when no address file override is provided.
+const defaultIndexerURL = "http://localhost:8080/api/whitelist/current"
+
 // GetCurrentEpoch queries the node for the current epoch.
 func GetCurrentEpoch(nodeURL, apiKey string) (int, error) {
 	reqData := map[string]interface{}{
@@ -49,11 +53,14 @@ type Identity struct {
 	Age     int     `json:"age"`
 }
 
+// FetcherConfig specifies how the fetcher connects to the Idena node and how
+// often it runs. The list of addresses is discovered automatically from the
+// rolling indexer, so no address list is required here.
 type FetcherConfig struct {
 	IntervalMinutes int    `json:"interval_minutes"`
 	NodeURL         string `json:"node_url"`
 	ApiKey          string `json:"api_key"`
-	AddressListFile string `json:"address_list_file"`
+	IndexerURL      string `json:"indexer_url"`
 }
 
 // Load fetcher configuration from JSON file, print debug info
@@ -109,6 +116,24 @@ func FetchIdentity(address, nodeURL, apiKey string) (*Identity, error) {
 	return &rpcResp.Result, nil
 }
 
+// FetchAddressesFromIndexer retrieves the list of currently eligible addresses
+// from the rolling indexer API. The endpoint is expected to return a JSON
+// object with an "addresses" field.
+func FetchAddressesFromIndexer(url string) ([]string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var data struct {
+		Addresses []string `json:"addresses"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, err
+	}
+	return data.Addresses, nil
+}
+
 // Main fetcher loop with full logging
 func RunIdentityFetcher(configPath string) {
 	log.Printf("[AGENT][Fetcher] RunIdentityFetcher called with configPath=%q", configPath)
@@ -116,29 +141,47 @@ func RunIdentityFetcher(configPath string) {
 	if err != nil {
 		log.Fatalf("[AGENT][Fetcher] Failed to load config: %v", err)
 	}
-	RunIdentityFetcherWithConfig(cfg)
+	RunIdentityFetcherWithConfig(cfg, "")
 }
 
 // RunIdentityFetcherWithConfig executes the fetcher loop using the provided configuration.
-func RunIdentityFetcherWithConfig(cfg *FetcherConfig) {
+func RunIdentityFetcherWithConfig(cfg *FetcherConfig, overrideFile string) {
 	for {
-		if err := RunIdentityFetcherOnce(cfg); err != nil {
+		if err := RunIdentityFetcherOnce(cfg, overrideFile); err != nil {
 			log.Printf("[AGENT][Fetcher] cycle error: %v", err)
 		}
 		time.Sleep(time.Duration(cfg.IntervalMinutes) * time.Minute)
+		// only use the override on the first run
+		overrideFile = ""
 	}
 }
 
 // RunIdentityFetcherOnce performs a single snapshot fetch using the provided configuration.
 // It returns an error if any step (loading addresses, contacting the node, or writing the file)
 // fails.
-func RunIdentityFetcherOnce(cfg *FetcherConfig) error {
-	log.Printf("[AGENT][Fetcher] loading addresses from %s", cfg.AddressListFile)
-	addresses, err := LoadAddressList(cfg.AddressListFile)
-	if err != nil {
-		return fmt.Errorf("load address list: %w", err)
+func RunIdentityFetcherOnce(cfg *FetcherConfig, overrideFile string) error {
+	var (
+		addresses []string
+		err       error
+	)
+	if overrideFile != "" {
+		log.Printf("[AGENT][Fetcher] loading addresses from override %s", overrideFile)
+		addresses, err = LoadAddressList(overrideFile)
+		if err != nil {
+			return fmt.Errorf("load address list: %w", err)
+		}
+	} else {
+		url := cfg.IndexerURL
+		if url == "" {
+			url = defaultIndexerURL
+		}
+		log.Printf("[AGENT][Fetcher] fetching addresses from %s", url)
+		addresses, err = FetchAddressesFromIndexer(url)
+		if err != nil {
+			return fmt.Errorf("fetch addresses from indexer: %w", err)
+		}
 	}
-	log.Printf("[AGENT][Fetcher] loaded %d addresses", len(addresses))
+	log.Printf("[AGENT][Fetcher] using %d addresses", len(addresses))
 
 	epoch, err := GetCurrentEpoch(cfg.NodeURL, cfg.ApiKey)
 	if err != nil {
@@ -169,10 +212,10 @@ func RunIdentityFetcherOnce(cfg *FetcherConfig) error {
 }
 
 // RunIdentityFetcherAutoEpoch loads the config and executes a single fetch for the current epoch.
-func RunIdentityFetcherAutoEpoch(configPath string) error {
+func RunIdentityFetcherAutoEpoch(configPath, overrideFile string) error {
 	cfg, err := LoadFetcherConfig(configPath)
 	if err != nil {
 		return err
 	}
-	return RunIdentityFetcherOnce(cfg)
+	return RunIdentityFetcherOnce(cfg, overrideFile)
 }

@@ -165,7 +165,7 @@ Important: The rolling indexer is the primary data source for identity informati
 
 You can skip this step if you’re running the rolling indexer. This agent is mainly for specialized use cases or initial data seeding.
 
-The identity_fetcher agent (`agents/identity_fetcher.go`) polls a specific list of addresses for their identity info and writes the results to a JSON file. This can be useful if you want to quickly fetch the status of a custom subset of addresses without indexing the entire network.
+The identity_fetcher agent (`agents/identity_fetcher.go`) polls your Idena node for the identity details of a set of addresses and writes the results to a JSON snapshot file. By default the address list is obtained from the rolling indexer (`/api/whitelist/current`), so no manual list is required. You can still provide a static list via the `-address-file` flag if needed for special cases.
 
 To use it:
 
@@ -175,7 +175,7 @@ Prepare the configuration:
 cp agents/fetcher_config.example.json agents/config.json
 ```
 
-Open `agents/config.json` in an editor and set the fields according to your needs (RPC node URL, API key, and the path to your address list).
+Open `agents/config.json` in an editor and set the node connection fields (RPC URL and API key). The indexer URL can also be customised but defaults to `http://localhost:8080`.
 
 Run the fetcher:
 
