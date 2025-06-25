@@ -422,7 +422,7 @@ func handleLatest(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(list)
 }
 
-func handleEligible(w http.ResponseWriter, r *http.Request) {
+func queryEligibleSnapshots() ([]Snapshot, error) {
 	rows, err := db.Query(`
         SELECT s.address, s.state, s.stake, s.ts
         FROM snapshots s
@@ -432,17 +432,34 @@ func handleEligible(w http.ResponseWriter, r *http.Request) {
         WHERE s.state IN ('Human','Verified','Newbie') AND s.stake >= 10000
     `)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+		return nil, err
 	}
 	defer rows.Close()
-	list, err := rowsToSnapshots(rows)
+	return rowsToSnapshots(rows)
+}
+
+func handleEligible(w http.ResponseWriter, r *http.Request) {
+	list, err := queryEligibleSnapshots()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(list)
+}
+
+func handleAPIWhitelistCurrent(w http.ResponseWriter, r *http.Request) {
+	snaps, err := queryEligibleSnapshots()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	addrs := make([]string, len(snaps))
+	for i, s := range snaps {
+		addrs[i] = s.Address
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"addresses": addrs})
 }
 
 func handleIdentity(w http.ResponseWriter, r *http.Request) {
@@ -514,6 +531,7 @@ func main() {
 
 	http.HandleFunc("/identities/latest", handleLatest)
 	http.HandleFunc("/identities/eligible", handleEligible)
+	http.HandleFunc("/api/whitelist/current", handleAPIWhitelistCurrent)
 	http.HandleFunc("/identity/", handleIdentity)
 	http.HandleFunc("/state/", handleState)
 

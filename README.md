@@ -146,6 +146,8 @@ When the indexer runs, it will create (or use) an SQLite database file at rollin
 
 /identities/eligible – Returns only the identities (addresses) that are currently eligible for Proof-of-Humanity (i.e. those that meet the criteria: correct identity status and sufficient stake, no validation penalty).
 
+/api/whitelist/current – Returns just the eligible addresses formatted as `{"addresses": [...]}`.
+
 /identity/{address} – Returns the full history of identity states for the given address (all snapshots recorded in the 30-day window).
 
 /state/{IdentityState} – Returns all addresses currently in the given identity state (e.g. Human, Verified, Newbie, etc., as recognized by the Idena protocol).
