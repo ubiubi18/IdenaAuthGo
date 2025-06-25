@@ -3,7 +3,7 @@
     "interval_minutes": 60,
     "node_url": "http://localhost:9009",
     "api_key": "YOUR_API_KEY_HERE",
-    "address_list_file": "data/address_list.txt"
+    "indexer_url": "http://localhost:8080/api/whitelist/current"
   },
   "session-block-finder": {
     "node_url": "http://localhost:9009",
