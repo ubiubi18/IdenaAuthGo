@@ -56,6 +56,9 @@ var (
 
 	// identityFetcher can be replaced in tests to avoid network calls
 	identityFetcher func(string) (string, float64) = getIdentity
+
+	// fetchEpochIdentitiesFn allows tests to stub epoch identity retrieval
+	fetchEpochIdentitiesFn func(int) ([]epochIdentity, error) = fetchEpochIdentities
 )
 
 type Session struct {
@@ -649,9 +652,10 @@ func predictNextEpoch(snapshotEligible bool, liveState string, liveStake float64
 }
 
 func buildEpochWhitelist(epoch int, threshold float64) error {
-	ids, err := fetchEpochIdentities(epoch)
-	if err != nil {
-		return err
+	ids, err := fetchEpochIdentitiesFn(epoch)
+	if err != nil || len(ids) == 0 {
+		log.Printf("[WHITELIST] local node missing data for epoch %d; using official API fallback", epoch)
+		return buildEpochWhitelistAPI(epoch, threshold)
 	}
 	var snaps []EpochSnapshot
 	var list []string
