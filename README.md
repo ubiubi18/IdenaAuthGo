@@ -165,11 +165,7 @@ Important: The rolling indexer is the primary data source for identity informati
 
 ### 6. (Optional) Identity Fetcher Agent
 
-You can skip this step if you’re running the rolling indexer. This agent is mainly for specialized use cases or initial data seeding.
-
-The identity_fetcher agent (`agents/identity_fetcher.go`) polls your Idena node for the identity details of a set of addresses and writes the results to a JSON snapshot file. By default the address list is obtained from the rolling indexer (`/api/whitelist/current`), so no manual list is required. You can still provide a static list via the `-address-file` flag if needed for special cases.
-
-To use it:
+The identity_fetcher tool (`agents/identity_fetcher.go`) can generate a whitelist snapshot by querying your node directly. It is no longer used by the web server and exists purely for ad‑hoc data collection.
 
 Prepare the configuration:
 
@@ -177,25 +173,13 @@ Prepare the configuration:
 cp agents/fetcher_config.example.json agents/config.json
 ```
 
-Open `agents/config.json` in an editor and set the node connection fields (RPC URL and API key). The indexer URL can also be customised but defaults to `http://localhost:8080`.
-
-Run the fetcher:
+Edit `agents/config.json` to point to your node, then run:
 
 ```bash
 go run cmd/fetcher/main.go -config agents/config.json
 ```
 
-The command automatically queries your node for the current epoch and writes
-`data/whitelist_epoch_<N>.json` (where `<N>` is the epoch number). Run this
-periodically – for example via cron – to keep the snapshot fresh. If you’re
-running the rolling indexer you can skip this step, as the indexer provides the
-same data automatically.
-
-Example hourly cron entry:
-
-```
-0 * * * * cd /path/to/IdenaAuthGo && /usr/local/go/bin/go run cmd/fetcher/main.go -config agents/config.json >> fetcher.log 2>&1
-```
+This writes `data/whitelist_epoch_<N>.json` for manual inspection. In normal setups the rolling indexer and the server’s `buildEpochWhitelist` function already produce the official snapshot, so running the fetcher is optional.
 
 ### 7. (Optional) Session Start Block Finder
 

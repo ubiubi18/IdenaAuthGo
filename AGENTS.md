@@ -2,9 +2,9 @@
 
 This repository contains several small helper components used to collect data from an Idena node, outside of the main web server. These agents are primarily for data collection, bootstrapping, or monitoring tasks and are optional in typical setups.
 
-## identity_fetcher
+## identity_fetcher (deprecated)
 
-The **identity_fetcher** (`agents/identity_fetcher.go`) contacts your Idena node for the identity info of eligible addresses and writes each address’s latest state to a JSON file (a “snapshot”). Starting with this version the fetcher obtains the address list from the rolling indexer automatically, so the config no longer needs an address file.
+The **identity_fetcher** (`agents/identity_fetcher.go`) contacts your Idena node for the identity info of eligible addresses and writes each address’s latest state to a JSON file (a “snapshot”). This agent predates the integrated whitelist builder and is no longer run automatically. Use it only for manual data collection or debugging.
 
 - `interval_minutes` – how often (in minutes) to poll
 - `node_url` – RPC URL of your Idena node (e.g. `http://localhost:9009`)
