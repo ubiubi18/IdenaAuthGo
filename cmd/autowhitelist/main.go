@@ -235,10 +235,6 @@ func main() {
 	}
 
 	lastEpoch := epoch - 1
-	bad, err := fetchBadAddresses(*nodeURL, *apiKey, lastEpoch)
-	if err != nil {
-		log.Fatalf("bad authors: %v", err)
-	}
 
 	out, err := os.Create(outFile)
 	if err != nil {
@@ -249,8 +245,9 @@ func main() {
 	included := 0
 	for i, addr := range addresses {
 		addrL := strings.ToLower(addr)
-		if _, ok := bad[addrL]; ok {
-			log.Printf("[%d/%d] skip bad author %s", i+1, len(addresses), addr)
+		pen, flip, err := checks.CheckPenaltyFlipForEpoch(*nodeURL, *apiKey, lastEpoch, addrL)
+		if err != nil {
+			log.Printf("[%d/%d] check %s: %v", i+1, len(addresses), addr, err)
 			continue
 		}
 		sum, err := fetchValidationSummary(*nodeURL, *apiKey, lastEpoch, addrL)
@@ -259,13 +256,8 @@ func main() {
 			continue
 		}
 		stake, _ := strconv.ParseFloat(sum.Stake, 64)
-		flip := false
-		if _, ok := bad[addrL]; ok {
-			flip = true
-		}
-		penalized := sum.Penalized || !sum.Approved
-		if !eligibility.IsEligibleFull(sum.State, stake, penalized, flip, threshold) {
-			log.Printf("[%d/%d] EXCLUDED %s state=%s stake=%.2f penalized=%v flip=%v", i+1, len(addresses), addr, sum.State, stake, penalized, flip)
+		if !eligibility.IsEligibleFull(sum.State, stake, pen, flip, threshold) {
+			log.Printf("[%d/%d] EXCLUDED %s state=%s stake=%.2f penalized=%v flip=%v", i+1, len(addresses), addr, sum.State, stake, pen, flip)
 			continue
 		}
 		rec := map[string]interface{}{"address": addr, "state": sum.State, "stake": stake}
