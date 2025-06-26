@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
-	"idenauthgo/agents" // If using modules; may need path adjustment
 	"io"
 	"log"
 	"net/http"
@@ -149,7 +148,6 @@ func main() {
 		return
 	}
 
-	go agents.RunIdentityFetcher("agents/fetcher_config.json")
 	var err error
 	db, err = sql.Open("sqlite3", dbFile)
 	if err != nil {
