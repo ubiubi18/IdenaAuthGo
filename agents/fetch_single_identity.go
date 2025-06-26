@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"sync"
 )
 
 const localNodeURL = "http://localhost:9009"
@@ -60,4 +62,37 @@ func fetchIdentity(address, apiKey string) (*IdentityResult, error) {
 		return nil, fmt.Errorf("rpc error %d: %s", out.Error.Code, out.Error.Message)
 	}
 	return &out.Result, nil
+}
+
+// fetchIdentities retrieves identity info for multiple addresses concurrently.
+// It spawns a goroutine per address using fetchIdentity and returns a map
+// of address to result. Failed lookups are logged and omitted from the map.
+// Concurrency is limited via a buffered channel acting as a semaphore.
+func fetchIdentities(addresses []string, apiKey string) map[string]IdentityResult {
+	results := make(map[string]IdentityResult)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5)
+
+	for _, addr := range addresses {
+		addr := addr
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			res, err := fetchIdentity(addr, apiKey)
+			if err != nil {
+				log.Printf("[fetchIdentities] %s: %v", addr, err)
+				return
+			}
+			mu.Lock()
+			results[addr] = *res
+			mu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+	return results
 }
