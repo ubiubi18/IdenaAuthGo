@@ -25,6 +25,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	_ "github.com/mattn/go-sqlite3"
+	"idenauthgo/checks"
 	"idenauthgo/eligibility"
 )
 
@@ -650,9 +651,12 @@ func buildEpochWhitelist(epoch int, threshold float64) error {
 	}
 	var snaps []EpochSnapshot
 	var list []string
+	lastEpoch := epoch - 1
 	for _, id := range ids {
-		penalized := getPenaltyStatus(epoch, id.Address)
-		flip := hasFlipReport(epoch, id.Address)
+		penalized, flip, err := checks.CheckPenaltyFlipForEpoch(fallbackApiUrl, IDENA_RPC_KEY, lastEpoch, id.Address)
+		if err != nil {
+			log.Printf("[CHECK] %s: %v", id.Address, err)
+		}
 		snaps = append(snaps, EpochSnapshot{
 			Address:      id.Address,
 			State:        id.State,
@@ -1687,44 +1691,25 @@ func fetchValidationPenalty(epoch int, addr string) (bool, error) {
 }
 
 func getPenaltyStatus(epoch int, addr string) bool {
-	if hasPenalty(epoch, addr) {
-		return true
-	}
-	penalized, err := fetchValidationPenalty(epoch, addr)
+	pen, _, err := checks.CheckPenaltyFlipForEpoch(fallbackApiUrl, IDENA_RPC_KEY, epoch, addr)
 	if err != nil {
 		log.Printf("[PENALTY] fetch %s epoch %d: %v", addr, epoch, err)
 		return false
 	}
-	if penalized {
+	if pen {
 		recordPenalty(epoch, addr)
 	}
-	return penalized
+	return pen
 }
 
 // hasFlipReport checks lastValidationFlags for AtLeastOneFlipReported for the given epoch.
 // 2025-06-13 ticket #42
 func hasFlipReport(epoch int, addr string) bool {
-	var resp struct {
-		Result struct {
-			LastValidationFlags []string `json:"lastValidationFlags"`
-		} `json:"result"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+	_, flip, err := checks.CheckPenaltyFlipForEpoch(fallbackApiUrl, IDENA_RPC_KEY, epoch, addr)
+	if err != nil {
+		log.Printf("[FLIP] %s epoch %d: %v", addr, epoch, err)
 	}
-	err := callLocalRPC("dna_identity", []interface{}{addr, epoch}, &resp)
-	if err != nil || resp.Error != nil && resp.Error.Message != "" {
-		if err != nil {
-			log.Printf("[FLIP] rpc %s: %v", addr, err)
-		}
-		return false
-	}
-	for _, f := range resp.Result.LastValidationFlags {
-		if f == "AtLeastOneFlipReported" {
-			return true
-		}
-	}
-	return false
+	return flip
 }
 
 // epochLastHandler serves the /api/Epoch/Last endpoint.

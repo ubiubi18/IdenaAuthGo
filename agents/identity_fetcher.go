@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"idenauthgo/checks"
 )
 
 // defaultIndexerURL is the local rolling indexer endpoint that returns the
@@ -213,22 +215,18 @@ func fetchBadAuthors(nodeURL, apiKey string, epoch int) (map[string]struct{}, er
 
 // fetchValidationSummary retrieves validation summary for an address.
 func fetchValidationSummary(nodeURL, apiKey string, epoch int, addr string) (*ValidationSummary, error) {
-	url := strings.TrimRight(nodeURL, "/") + fmt.Sprintf("/api/Epoch/%d/Identity/%s/ValidationSummary", epoch, addr)
-	if apiKey != "" {
-		url += "?apikey=" + apiKey
-	}
-	resp, err := http.Get(url)
+	base := strings.TrimRight(nodeURL, "/")
+	sum, err := checks.FetchValidationSummary(base, apiKey, epoch, addr)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	var out struct {
-		Result ValidationSummary `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
-	}
-	return &out.Result, nil
+	stake, _ := strconv.ParseFloat(sum.Stake, 64)
+	return &ValidationSummary{
+		State:     sum.State,
+		Stake:     stake,
+		Approved:  sum.Approved,
+		Penalized: sum.Penalized,
+	}, nil
 }
 
 // fetchBlockRPC retrieves block data for the given height via JSON-RPC.

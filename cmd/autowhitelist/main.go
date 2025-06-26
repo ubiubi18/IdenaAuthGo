@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"idenauthgo/checks"
 	"idenauthgo/eligibility"
 )
 
@@ -171,43 +172,22 @@ func collectAddresses(nodeURL, apiKey string, start int) ([]string, error) {
 }
 
 func fetchBadAddresses(nodeURL, apiKey string, epoch int) (map[string]struct{}, error) {
-	bad := make(map[string]struct{})
-	cont := ""
-	for {
-		path := fmt.Sprintf("/api/Epoch/%d/Authors/Bad?limit=100", epoch)
-		if cont != "" {
-			path += "&continuationToken=" + cont
-		}
-		var res struct {
-			Result []struct {
-				Address string `json:"address"`
-			} `json:"result"`
-			Continuation string `json:"continuationToken"`
-		}
-		if err := apiGet(nodeURL, apiKey, path, &res); err != nil {
-			return bad, err
-		}
-		for _, r := range res.Result {
-			bad[strings.ToLower(r.Address)] = struct{}{}
-		}
-		if res.Continuation == "" {
-			break
-		}
-		cont = res.Continuation
-		time.Sleep(100 * time.Millisecond)
-	}
-	return bad, nil
+	base := strings.TrimRight(nodeURL, "/")
+	return checks.BadAuthors(base, apiKey, epoch)
 }
 
 func fetchValidationSummary(nodeURL, apiKey string, epoch int, addr string) (*validationSummary, error) {
-	var out struct {
-		Result validationSummary `json:"result"`
-	}
-	err := apiGet(nodeURL, apiKey, fmt.Sprintf("/api/Epoch/%d/Identity/%s/ValidationSummary", epoch, addr), &out)
+	base := strings.TrimRight(nodeURL, "/")
+	sum, err := checks.FetchValidationSummary(base, apiKey, epoch, addr)
 	if err != nil {
 		return nil, err
 	}
-	return &out.Result, nil
+	return &validationSummary{
+		State:     sum.State,
+		Stake:     sum.Stake,
+		Approved:  sum.Approved,
+		Penalized: sum.Penalized,
+	}, nil
 }
 
 func saveLines(path string, lines []string) error {
