@@ -231,6 +231,26 @@ func fetchValidationSummary(nodeURL, apiKey string, epoch int, addr string) (*Va
 	return &out.Result, nil
 }
 
+// fetchBlockRPC retrieves block data for the given height via JSON-RPC.
+func fetchBlockRPC(nodeURL, apiKey string, height int) (*Block, error) {
+	var b Block
+	if err := rpcCall(nodeURL, apiKey, "dna_getBlockByHeight", []interface{}{height}, &b); err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
+// fetchLastBlock obtains the latest block using bcn_lastBlock followed by dna_getBlockByHeight.
+func fetchLastBlockRPC(nodeURL, apiKey string) (*Block, error) {
+	var last struct {
+		Height int `json:"height"`
+	}
+	if err := rpcCall(nodeURL, apiKey, "bcn_lastBlock", nil, &last); err != nil {
+		return nil, err
+	}
+	return fetchBlockRPC(nodeURL, apiKey, last.Height)
+}
+
 // Main fetcher loop with full logging
 func RunIdentityFetcher(configPath string) {
 	log.Printf("[AGENT][Fetcher] RunIdentityFetcher called with configPath=%q", configPath)
@@ -269,13 +289,13 @@ func RunIdentityFetcherOnce(cfg *FetcherConfig, overrideFile string) error {
 		}
 	} else {
 		// find the block where ShortSessionStarted flag appears
-		last, err := fetchLastBlock(cfg.NodeURL, cfg.ApiKey)
+		last, err := fetchLastBlockRPC(cfg.NodeURL, cfg.ApiKey)
 		if err != nil {
 			return fmt.Errorf("fetch last block: %w", err)
 		}
 		shortHeight := 0
 		for h := last.Height; h >= 0 && h >= last.Height-2000; h-- {
-			blk, err := fetchBlockREST(cfg.NodeURL, cfg.ApiKey, h)
+			blk, err := fetchBlockRPC(cfg.NodeURL, cfg.ApiKey, h)
 			if err != nil {
 				continue
 			}
@@ -288,49 +308,16 @@ func RunIdentityFetcherOnce(cfg *FetcherConfig, overrideFile string) error {
 			return fmt.Errorf("ShortSessionStarted block not found")
 		}
 
-		// helper to fetch all transactions of a block via REST
+		// helper to fetch all transactions of a block via RPC
 		type tx struct {
 			From string `json:"from"`
 		}
 		fetchTxs := func(height int) ([]tx, error) {
-			base := strings.TrimRight(cfg.NodeURL, "/") + fmt.Sprintf("/api/Block/%d/Txs", height)
-			if cfg.ApiKey != "" {
-				base += "?apikey=" + cfg.ApiKey
+			var txs []tx
+			if err := rpcCall(cfg.NodeURL, cfg.ApiKey, "dna_getBlockTxs", []interface{}{height}, &txs); err != nil {
+				return nil, err
 			}
-			cont := ""
-			var all []tx
-			for {
-				url := base
-				if cont != "" {
-					if strings.Contains(url, "?") {
-						url += "&continuationToken=" + cont
-					} else {
-						url += "?continuationToken=" + cont
-					}
-				}
-				resp, err := http.Get(url)
-				if err != nil {
-					return all, err
-				}
-				var out struct {
-					Result       []tx   `json:"result"`
-					Continuation string `json:"continuationToken"`
-				}
-				if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-					resp.Body.Close()
-					return all, err
-				}
-				resp.Body.Close()
-				if out.Result != nil {
-					all = append(all, out.Result...)
-				}
-				if out.Continuation == "" {
-					break
-				}
-				cont = out.Continuation
-				time.Sleep(100 * time.Millisecond)
-			}
-			return all, nil
+			return txs, nil
 		}
 
 		unique := make(map[string]struct{})
