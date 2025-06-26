@@ -106,7 +106,9 @@ func fetchAllTxs(height int) ([]tx, error) {
 		if err := getJSON(full, &resp); err != nil {
 			return all, err
 		}
-		if resp.Result != nil {
+		// "result" can be null (empty block) or an empty array; check
+		// length to determine if any transactions exist.
+		if len(resp.Result) > 0 {
 			all = append(all, resp.Result...)
 		}
 		if resp.Continuation == "" {
