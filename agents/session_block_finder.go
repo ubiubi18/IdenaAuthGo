@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -33,28 +32,6 @@ func LoadSessionFinderConfig(path string) (*SessionFinderConfig, error) {
 	return &cfg, nil
 }
 
-func rpcCall(nodeURL, apiKey, method string, params []interface{}, out interface{}) error {
-	req := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  method,
-		"params":  params,
-	}
-	if apiKey != "" {
-		req["key"] = apiKey
-	}
-	body, _ := json.Marshal(req)
-	resp, err := http.Post(nodeURL, "application/json", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("rpc status %s", resp.Status)
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
-}
-
 // WaitForSessionBlocks polls the node until it observes both
 // ShortSessionStarted and LongSessionStarted flags. It returns the
 // corresponding block heights.
@@ -62,28 +39,24 @@ func WaitForSessionBlocks(nodeURL, apiKey string) (int, int, error) {
 	var shortStart, longStart int
 	for {
 		var last struct {
-			Result struct {
-				Height int `json:"height"`
-			} `json:"result"`
+			Height int `json:"height"`
 		}
 		if err := rpcCall(nodeURL, apiKey, "bcn_lastBlock", nil, &last); err != nil {
 			return 0, 0, err
 		}
 		var block struct {
-			Result struct {
-				Height int      `json:"height"`
-				Flags  []string `json:"flags"`
-			} `json:"result"`
+			Height int      `json:"height"`
+			Flags  []string `json:"flags"`
 		}
-		if err := rpcCall(nodeURL, apiKey, "bcn_block", []interface{}{last.Result.Height}, &block); err != nil {
+		if err := rpcCall(nodeURL, apiKey, "bcn_block", []interface{}{last.Height}, &block); err != nil {
 			return 0, 0, err
 		}
-		for _, f := range block.Result.Flags {
+		for _, f := range block.Flags {
 			if shortStart == 0 && f == "ShortSessionStarted" {
-				shortStart = block.Result.Height
+				shortStart = block.Height
 			}
 			if longStart == 0 && f == "LongSessionStarted" {
-				longStart = block.Result.Height
+				longStart = block.Height
 			}
 		}
 		if shortStart != 0 && longStart != 0 {
