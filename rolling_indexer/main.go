@@ -177,6 +177,27 @@ func fetchPublicEpoch() (int, error) {
 	return out.Result.Epoch, nil
 }
 
+// fetchRESTEpoch returns the latest epoch using the public REST API.
+func fetchRESTEpoch() (int, error) {
+	resp, err := http.Get("https://api.idena.io/api/Epoch/Last")
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("status %s", resp.Status)
+	}
+	var out struct {
+		Result struct {
+			Epoch int `json:"epoch"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, err
+	}
+	return out.Result.Epoch, nil
+}
+
 func fetchPublicEpochIdentities(epoch int) ([]Snapshot, error) {
 	req := map[string]interface{}{
 		"jsonrpc": "2.0",
@@ -211,18 +232,76 @@ func fetchPublicEpochIdentities(epoch int) ([]Snapshot, error) {
 	return list, nil
 }
 
+// restDelay controls the pause between REST API requests to avoid rate limits.
+const restDelay = 200 * time.Millisecond
+
+// fetchRESTEpochIdentities retrieves identity data for an epoch using the
+// official REST API. It falls back to the ValidationSummary endpoint for each
+// address to obtain stake information.
+func fetchRESTEpochIdentities(epoch int) ([]Snapshot, error) {
+	cont := ""
+	var list []Snapshot
+	for {
+		url := fmt.Sprintf("https://api.idena.io/api/Epoch/%d/Identities?limit=100", epoch)
+		if cont != "" {
+			url += "&continuationToken=" + cont
+		}
+		resp, err := http.Get(url)
+		if err != nil {
+			return list, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return list, fmt.Errorf("status %s", resp.Status)
+		}
+		var out struct {
+			Result []struct {
+				Address string `json:"address"`
+			} `json:"result"`
+			Continuation string `json:"continuationToken"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			resp.Body.Close()
+			return list, err
+		}
+		resp.Body.Close()
+		for _, r := range out.Result {
+			sum, err := checks.FetchValidationSummary(checks.APIBase, "", epoch, r.Address)
+			if err != nil {
+				time.Sleep(restDelay)
+				continue
+			}
+			stake, _ := strconv.ParseFloat(sum.Stake, 64)
+			list = append(list, Snapshot{Address: strings.ToLower(r.Address), State: sum.State, Stake: stake})
+			time.Sleep(restDelay)
+		}
+		if out.Continuation == "" {
+			break
+		}
+		cont = out.Continuation
+		time.Sleep(restDelay)
+	}
+	return list, nil
+}
+
 func bootstrapHistory(epochs int) error {
 	log.Println("Bootstrapping from public API... (can be disabled). If unavailable, will only track new data after this session.")
 	current, err := fetchPublicEpoch()
 	if err != nil {
-		return err
+		current, err = fetchRESTEpoch()
+		if err != nil {
+			return err
+		}
 	}
 	now := time.Now()
 	for i := 0; i < epochs; i++ {
 		ep := current - i
 		snaps, err := fetchPublicEpochIdentities(ep)
-		if err != nil {
-			return err
+		if err != nil || len(snaps) == 0 {
+			snaps, err = fetchRESTEpochIdentities(ep)
+			if err != nil {
+				return err
+			}
 		}
 		storeSnapshots(snaps, now.AddDate(0, 0, -7*i))
 		for _, s := range snaps {
