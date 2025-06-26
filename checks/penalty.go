@@ -25,6 +25,7 @@ var (
 	badCache = make(map[int]map[string]struct{})
 )
 
+// Swagger: /Epoch/{epoch}/Authors/Bad
 func fetchBadAuthors(base, apiKey string, epoch int) (map[string]struct{}, error) {
 	bad := make(map[string]struct{})
 	cont := ""
@@ -88,6 +89,7 @@ func BadAuthors(base, apiKey string, epoch int) (map[string]struct{}, error) {
 	return getBadAuthors(base, apiKey, epoch)
 }
 
+// Swagger: /Epoch/{epoch}/Identity/{address}/ValidationSummary
 func FetchValidationSummary(base, apiKey string, epoch int, addr string) (*ValidationSummary, error) {
 	url := fmt.Sprintf("%s/api/Epoch/%d/Identity/%s/ValidationSummary", strings.TrimRight(base, "/"), epoch, addr)
 	if apiKey != "" {

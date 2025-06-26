@@ -13,10 +13,13 @@ This project is a Go backend for verifying Idena identities and building whiteli
   - `/whitelist/check?address=...` – checks a single address’s inclusion and eligibility status
 - **Eligibility Snapshot:** `/eligibility?address=...` shows an address’s eligibility as of the snapshot block/epoch and predicts its status for the next epoch.
 - **Penalty Exclusion:** Automatically excludes any identity with a validation *Penalty* in the current epoch from the whitelist.
+- **Flip Report Exclusion:** Addresses reported for submitting bad flips are also removed from the whitelist.
 - **Merkle Tree Proofs:** `/merkle_root` returns the Merkle root of the current whitelist. `/merkle_proof?address=...` returns a Merkle proof for a given address (if that address is in the current whitelist).
 - **Identity Indexer (Rolling):** A built-in indexer under `rolling_indexer/` continuously polls identity data from an Idena node, stores it in a local SQLite database, and exposes a REST API for identity queries. *(This replaces the need for the external Idena indexer service.)*
+- **Public Bootstrap:** When enabled, the indexer now falls back to the official REST API to populate missing epochs on first run.
 - **Agent Scripts:** Utility scripts under `agents/` (for example, an `identity_fetcher` and a `session_block_finder`) help with data collection and monitoring. These are primarily for bootstrapping or debugging and are optional in normal operation.
 - **Admin Tools:** Experimental React interface for custom eligibility scripting, batch address checks, and webhook integrations. All custom scripts run locally in the browser.
+- **Python Reference Test:** The Go whitelist builder is continuously compared against the original Python implementation to ensure identical results.
 
 ## Setup & Usage
 
