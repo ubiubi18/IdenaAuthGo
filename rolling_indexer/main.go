@@ -207,7 +207,9 @@ func fetchPublicEpochIdentities(epoch int) ([]Snapshot, error) {
 		"id":      1,
 	}
 	body, _ := json.Marshal(req)
-	resp, err := http.Post("https://rpc.idena.io", "application/json", bytes.NewReader(body))
+	// Use the public REST API endpoint instead of the old rpc.idena.io
+	// endpoint (which now serves a web app and returns HTML).
+	resp, err := http.Post("https://api.idena.io", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
