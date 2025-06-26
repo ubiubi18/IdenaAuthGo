@@ -158,7 +158,8 @@ func dbIsEmpty() bool {
 }
 
 func fetchPublicEpoch() (int, error) {
-	resp, err := http.Get("https://rpc.idena.io/api/Epoch/Last")
+	// Always use the official Idena API for epoch data
+	resp, err := http.Get("https://api.idena.io/api/Epoch/Last")
 	if err != nil {
 		return 0, err
 	}
