@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"idenauthgo/checks"
 )
 
 // defaultIndexerURL is the local rolling indexer endpoint that returns the
@@ -173,62 +175,24 @@ func getEpochLast(nodeURL, apiKey string) (int, float64, error) {
 
 // fetchBadAuthors returns a set of bad authors for the given epoch.
 func fetchBadAuthors(nodeURL, apiKey string, epoch int) (map[string]struct{}, error) {
-	bad := make(map[string]struct{})
-	base := strings.TrimRight(nodeURL, "/") + fmt.Sprintf("/api/Epoch/%d/Authors/Bad?limit=100", epoch)
-	if apiKey != "" {
-		base += "&apikey=" + apiKey
-	}
-	cont := ""
-	for {
-		url := base
-		if cont != "" {
-			url += "&continuationToken=" + cont
-		}
-		resp, err := http.Get(url)
-		if err != nil {
-			return bad, err
-		}
-		var out struct {
-			Result []struct {
-				Address string `json:"address"`
-			} `json:"result"`
-			Continuation string `json:"continuationToken"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-			resp.Body.Close()
-			return bad, err
-		}
-		resp.Body.Close()
-		for _, r := range out.Result {
-			bad[strings.ToLower(r.Address)] = struct{}{}
-		}
-		if out.Continuation == "" {
-			break
-		}
-		cont = out.Continuation
-		time.Sleep(100 * time.Millisecond)
-	}
-	return bad, nil
+	base := strings.TrimRight(nodeURL, "/")
+	return checks.BadAuthors(base, apiKey, epoch)
 }
 
 // fetchValidationSummary retrieves validation summary for an address.
 func fetchValidationSummary(nodeURL, apiKey string, epoch int, addr string) (*ValidationSummary, error) {
-	url := strings.TrimRight(nodeURL, "/") + fmt.Sprintf("/api/Epoch/%d/Identity/%s/ValidationSummary", epoch, addr)
-	if apiKey != "" {
-		url += "?apikey=" + apiKey
-	}
-	resp, err := http.Get(url)
+	base := strings.TrimRight(nodeURL, "/")
+	sum, err := checks.FetchValidationSummary(base, apiKey, epoch, addr)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	var out struct {
-		Result ValidationSummary `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
-	}
-	return &out.Result, nil
+	stake, _ := strconv.ParseFloat(sum.Stake, 64)
+	return &ValidationSummary{
+		State:     sum.State,
+		Stake:     stake,
+		Approved:  sum.Approved,
+		Penalized: sum.Penalized,
+	}, nil
 }
 
 // fetchBlockRPC retrieves block data for the given height via JSON-RPC.
@@ -350,23 +314,20 @@ func RunIdentityFetcherOnce(cfg *FetcherConfig, overrideFile string) error {
 	outputPath := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
 	log.Printf("[AGENT][Fetcher] output file %s", outputPath)
 
-	bad, err := fetchBadAuthors(cfg.NodeURL, cfg.ApiKey, lastEpoch)
-	if err != nil {
-		return fmt.Errorf("bad authors: %w", err)
-	}
-
 	var whitelist []string
 	for _, addr := range addresses {
 		addrL := strings.ToLower(addr)
-		if _, skip := bad[addrL]; skip {
+		pen, flip, err := checks.CheckPenaltyFlipForEpoch(cfg.NodeURL, cfg.ApiKey, lastEpoch, addrL)
+		if err != nil {
+			log.Printf("[AGENT][Fetcher] check %s: %v", addrL, err)
+			continue
+		}
+		if pen || flip {
 			continue
 		}
 		sum, err := fetchValidationSummary(cfg.NodeURL, cfg.ApiKey, lastEpoch, addrL)
 		if err != nil {
 			log.Printf("[AGENT][Fetcher] summary %s: %v", addrL, err)
-			continue
-		}
-		if sum.Penalized || !sum.Approved {
 			continue
 		}
 		if sum.State == "Human" && sum.Stake < threshold {

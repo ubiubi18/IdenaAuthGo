@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"idenauthgo/checks"
 	"idenauthgo/eligibility"
 )
 
@@ -32,54 +33,7 @@ func apiGet(path string, out interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// fetchBadAuthorsAPI returns addresses reported for bad flips in the given epoch
-func fetchBadAuthorsAPI(epoch int) (map[string]struct{}, error) {
-	bad := make(map[string]struct{})
-	cont := ""
-	for {
-		path := fmt.Sprintf("/api/Epoch/%d/Authors/Bad?limit=100", epoch)
-		if cont != "" {
-			path += "&continuationToken=" + cont
-		}
-		var res struct {
-			Result []struct {
-				Address string `json:"address"`
-			} `json:"result"`
-			Continuation string `json:"continuationToken"`
-		}
-		if err := apiGet(path, &res); err != nil {
-			return bad, err
-		}
-		for _, r := range res.Result {
-			bad[strings.ToLower(r.Address)] = struct{}{}
-		}
-		if res.Continuation == "" {
-			break
-		}
-		cont = res.Continuation
-		time.Sleep(100 * time.Millisecond)
-	}
-	return bad, nil
-}
-
-// validationSummaryAPI mirrors the ValidationSummary response from the API
-type validationSummaryAPI struct {
-	State     string `json:"state"`
-	Stake     string `json:"stake"`
-	Approved  bool   `json:"approved"`
-	Penalized bool   `json:"penalized"`
-}
-
-func fetchValidationSummaryAPI(epoch int, addr string) (*validationSummaryAPI, error) {
-	var out struct {
-		Result validationSummaryAPI `json:"result"`
-	}
-	path := fmt.Sprintf("/api/Epoch/%d/Identity/%s/ValidationSummary", epoch, addr)
-	if err := apiGet(path, &out); err != nil {
-		return nil, err
-	}
-	return &out.Result, nil
-}
+// validation summary helper removed; use checks package
 
 func buildEpochWhitelistAPI(epoch int, threshold float64) error {
 	lastEpoch := epoch - 1
@@ -156,30 +110,26 @@ func buildEpochWhitelistAPI(epoch int, threshold float64) error {
 	for a := range unique {
 		addresses = append(addresses, a)
 	}
-	bad, err := fetchBadAuthorsAPI(lastEpoch)
-	if err != nil {
-		return fmt.Errorf("bad authors: %w", err)
-	}
 	var snaps []EpochSnapshot
 	var list []string
 	for _, addr := range addresses {
-		sum, err := fetchValidationSummaryAPI(lastEpoch, addr)
+		sum, err := checks.FetchValidationSummary(fallbackApiUrl, IDENA_RPC_KEY, lastEpoch, addr)
+		if err != nil {
+			continue
+		}
+		penalized, flip, err := checks.CheckPenaltyFlipForEpoch(fallbackApiUrl, IDENA_RPC_KEY, lastEpoch, addr)
 		if err != nil {
 			continue
 		}
 		stake, _ := strconv.ParseFloat(sum.Stake, 64)
-		flip := false
-		if _, ok := bad[addr]; ok {
-			flip = true
-		}
 		snaps = append(snaps, EpochSnapshot{
 			Address:      addr,
 			State:        sum.State,
 			Stake:        stake,
-			Penalized:    sum.Penalized,
+			Penalized:    penalized,
 			FlipReported: flip,
 		})
-		if eligibility.IsEligibleFull(sum.State, stake, sum.Penalized, flip, threshold) {
+		if eligibility.IsEligibleFull(sum.State, stake, penalized, flip, threshold) {
 			list = append(list, addr)
 		}
 	}

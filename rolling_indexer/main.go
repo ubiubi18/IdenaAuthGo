@@ -37,6 +37,7 @@ import (
 	"sync"
 	"time"
 
+	"idenauthgo/checks"
 	"idenauthgo/eligibility"
 )
 
@@ -427,10 +428,11 @@ func handleLatest(w http.ResponseWriter, r *http.Request) {
 }
 
 func queryEligibleSnapshots() ([]Snapshot, error) {
-	_, thr, err := getEpochAndThreshold()
+	epoch, thr, err := getEpochAndThreshold()
 	if err != nil || thr == 0 {
 		thr = 10000 // sensible fallback if API unavailable
 	}
+	lastEpoch := epoch - 1
 
 	rows, err := db.Query(`
         SELECT s.address, s.state, s.stake, s.ts
@@ -449,10 +451,14 @@ func queryEligibleSnapshots() ([]Snapshot, error) {
 		return nil, err
 	}
 
-	// filter by eligibility rules using the latest threshold
+	// filter by eligibility rules using the latest threshold and penalty/flip checks
 	var list []Snapshot
 	for _, s := range all {
-		if eligibility.IsEligibleSnapshot(s.State, s.Stake, thr) {
+		pen, flip, err := checks.CheckPenaltyFlipForEpoch(cfg.RPCURL, cfg.RPCKey, lastEpoch, s.Address)
+		if err != nil {
+			continue
+		}
+		if eligibility.IsEligibleFull(s.State, s.Stake, pen, flip, thr) {
 			list = append(list, s)
 		}
 	}

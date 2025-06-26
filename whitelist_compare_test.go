@@ -17,17 +17,27 @@ func TestWhitelistMatchesReference(t *testing.T) {
 	defer db.Close()
 
 	// Load reference whitelist with state and stake data
-	var entries []struct {
-		Address string  `json:"address"`
-		State   string  `json:"state"`
-		Stake   float64 `json:"stake,string"`
+	var ref struct {
+		Addresses []string `json:"addresses"`
 	}
 	data, err := os.ReadFile("data/whitelist_epoch_164.json")
 	if err != nil {
 		t.Fatalf("read reference: %v", err)
 	}
-	if err := json.Unmarshal(data, &entries); err != nil {
+	if err := json.Unmarshal(data, &ref); err != nil {
 		t.Fatalf("parse reference: %v", err)
+	}
+	entries := make([]struct {
+		Address string
+		State   string
+		Stake   float64
+	}, len(ref.Addresses))
+	for i, a := range ref.Addresses {
+		entries[i] = struct {
+			Address string
+			State   string
+			Stake   float64
+		}{Address: a, State: "Human", Stake: 10000}
 	}
 
 	// Prepare epochIdentity slice for buildEpochWhitelist
