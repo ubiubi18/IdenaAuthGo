@@ -1,4 +1,4 @@
-# IdenaAuthGo
+# NOT READY - JUST PUBLIC FOR EASIER WIBE CODING
 
 This project is a Go backend for verifying Idena identities and building whitelists. It provides implementations of a "Login with Idena" flow and a lightweight identity indexer, among other features.  
 ⚠️ **Use at your own risk** – the code is under active development and has not been audited.
