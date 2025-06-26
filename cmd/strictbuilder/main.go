@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"idenauthgo/eligibility"
 )
 
 const (
@@ -252,26 +254,14 @@ func main() {
 			continue
 		}
 		stake, _ := strconv.ParseFloat(sum.Stake, 64)
-		reason := ""
-		if sum.Penalized || !sum.Approved {
-			reason = "not approved or penalized"
-		} else if sum.State == "Human" {
-			if stake < threshold {
-				reason = fmt.Sprintf("Human stake %.4f below threshold %.4f", stake, threshold)
-			}
-		} else if sum.State == "Newbie" {
-			if stake < newbieMinStake {
-				reason = fmt.Sprintf("Newbie stake %.4f below %f", stake, newbieMinStake)
-			}
-		} else if sum.State == "Verified" {
-			if stake < verifiedMinStake {
-				reason = fmt.Sprintf("Verified stake %.4f below %f", stake, verifiedMinStake)
-			}
-		} else {
-			reason = "wrong state " + sum.State
+		flip := false
+		if _, ok := bad[addrL]; ok {
+			flip = true
 		}
-		if reason != "" {
-			fmt.Printf("[%d/%d] EXCLUDED: %s - %s\n", i+1, len(addrs), addr, reason)
+		penalized := sum.Penalized || !sum.Approved
+		if !eligibility.IsEligibleFull(sum.State, stake, penalized, flip, threshold) {
+			fmt.Printf("[%d/%d] EXCLUDED: %s state=%s stake=%.2f penalized=%v flip=%v\n",
+				i+1, len(addrs), addr, sum.State, stake, penalized, flip)
 			continue
 		}
 		data, _ := json.Marshal(map[string]interface{}{

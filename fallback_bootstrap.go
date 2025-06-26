@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"idenauthgo/eligibility"
 )
 
 // requiredBlocks defines how many consecutive blocks after short session start
@@ -177,7 +179,7 @@ func buildEpochWhitelistAPI(epoch int, threshold float64) error {
 			Penalized:    sum.Penalized,
 			FlipReported: flip,
 		})
-		if !sum.Penalized && !flip && isEligibleSnapshot(sum.State, stake, threshold) {
+		if eligibility.IsEligibleFull(sum.State, stake, sum.Penalized, flip, threshold) {
 			list = append(list, addr)
 		}
 	}
