@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -55,6 +56,14 @@ type Identity struct {
 	State   string  `json:"state"`
 	Stake   float64 `json:"stake,string"`
 	Age     int     `json:"age"`
+}
+
+// ValidationSummary mirrors the node's ValidationSummary REST response.
+type ValidationSummary struct {
+	State     string  `json:"state"`
+	Stake     float64 `json:"stake,string"`
+	Approved  bool    `json:"approved"`
+	Penalized bool    `json:"penalized"`
 }
 
 // FetcherConfig specifies how the fetcher connects to the Idena node and how
@@ -136,6 +145,90 @@ func FetchAddressesFromIndexer(url string) ([]string, error) {
 		return nil, err
 	}
 	return data.Addresses, nil
+}
+
+// getEpochLast fetches the current epoch and discrimination threshold.
+func getEpochLast(nodeURL, apiKey string) (int, float64, error) {
+	url := strings.TrimRight(nodeURL, "/") + "/api/Epoch/Last"
+	if apiKey != "" {
+		url += "?apikey=" + apiKey
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Result struct {
+			Epoch     int    `json:"epoch"`
+			Threshold string `json:"discriminationStakeThreshold"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, 0, err
+	}
+	thr, _ := strconv.ParseFloat(out.Result.Threshold, 64)
+	return out.Result.Epoch, thr, nil
+}
+
+// fetchBadAuthors returns a set of bad authors for the given epoch.
+func fetchBadAuthors(nodeURL, apiKey string, epoch int) (map[string]struct{}, error) {
+	bad := make(map[string]struct{})
+	base := strings.TrimRight(nodeURL, "/") + fmt.Sprintf("/api/Epoch/%d/Authors/Bad?limit=100", epoch)
+	if apiKey != "" {
+		base += "&apikey=" + apiKey
+	}
+	cont := ""
+	for {
+		url := base
+		if cont != "" {
+			url += "&continuationToken=" + cont
+		}
+		resp, err := http.Get(url)
+		if err != nil {
+			return bad, err
+		}
+		var out struct {
+			Result []struct {
+				Address string `json:"address"`
+			} `json:"result"`
+			Continuation string `json:"continuationToken"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			resp.Body.Close()
+			return bad, err
+		}
+		resp.Body.Close()
+		for _, r := range out.Result {
+			bad[strings.ToLower(r.Address)] = struct{}{}
+		}
+		if out.Continuation == "" {
+			break
+		}
+		cont = out.Continuation
+		time.Sleep(100 * time.Millisecond)
+	}
+	return bad, nil
+}
+
+// fetchValidationSummary retrieves validation summary for an address.
+func fetchValidationSummary(nodeURL, apiKey string, epoch int, addr string) (*ValidationSummary, error) {
+	url := strings.TrimRight(nodeURL, "/") + fmt.Sprintf("/api/Epoch/%d/Identity/%s/ValidationSummary", epoch, addr)
+	if apiKey != "" {
+		url += "?apikey=" + apiKey
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Result ValidationSummary `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out.Result, nil
 }
 
 // Main fetcher loop with full logging
@@ -261,31 +354,50 @@ func RunIdentityFetcherOnce(cfg *FetcherConfig, overrideFile string) error {
 	}
 	log.Printf("[AGENT][Fetcher] using %d addresses", len(addresses))
 
-	epoch, err := GetCurrentEpoch(cfg.NodeURL, cfg.ApiKey)
+	epoch, threshold, err := getEpochLast(cfg.NodeURL, cfg.ApiKey)
 	if err != nil {
-		return fmt.Errorf("get current epoch: %w", err)
+		return fmt.Errorf("epoch info: %w", err)
 	}
-	log.Printf("[AGENT][Fetcher] current epoch %d", epoch)
+	lastEpoch := epoch - 1
+	log.Printf("[AGENT][Fetcher] current epoch %d threshold %.4f", epoch, threshold)
 	outputPath := fmt.Sprintf("data/whitelist_epoch_%d.json", epoch)
 	log.Printf("[AGENT][Fetcher] output file %s", outputPath)
 
-	var snapshot []Identity
+	bad, err := fetchBadAuthors(cfg.NodeURL, cfg.ApiKey, lastEpoch)
+	if err != nil {
+		return fmt.Errorf("bad authors: %w", err)
+	}
+
+	var whitelist []string
 	for _, addr := range addresses {
-		id, err := FetchIdentity(addr, cfg.NodeURL, cfg.ApiKey)
-		if err != nil {
-			log.Printf("[AGENT][Fetcher] fetch %s: %v", addr, err)
+		addrL := strings.ToLower(addr)
+		if _, skip := bad[addrL]; skip {
 			continue
 		}
-		snapshot = append(snapshot, *id)
+		sum, err := fetchValidationSummary(cfg.NodeURL, cfg.ApiKey, lastEpoch, addrL)
+		if err != nil {
+			log.Printf("[AGENT][Fetcher] summary %s: %v", addrL, err)
+			continue
+		}
+		if sum.Penalized || !sum.Approved {
+			continue
+		}
+		if sum.State == "Human" && sum.Stake < threshold {
+			continue
+		}
+		if (sum.State == "Newbie" || sum.State == "Verified") && sum.Stake < 10000 {
+			continue
+		}
+		whitelist = append(whitelist, addrL)
 	}
-	snapBytes, err := json.MarshalIndent(snapshot, "", "  ")
+	b, err := json.MarshalIndent(whitelist, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshal snapshot: %w", err)
+		return fmt.Errorf("marshal whitelist: %w", err)
 	}
-	if err := os.WriteFile(outputPath, snapBytes, 0644); err != nil {
-		return fmt.Errorf("write snapshot: %w", err)
+	if err := os.WriteFile(outputPath, b, 0644); err != nil {
+		return fmt.Errorf("write whitelist: %w", err)
 	}
-	log.Printf("[AGENT][Fetcher] wrote snapshot with %d addresses", len(snapshot))
+	log.Printf("[AGENT][Fetcher] wrote whitelist with %d addresses", len(whitelist))
 	return nil
 }
 
