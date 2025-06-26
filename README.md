@@ -129,6 +129,11 @@ USE_PUBLIC_BOOTSTRAP – If set to true, the indexer will fetch historical ident
 BOOTSTRAP_EPOCHS – If bootstrapping is enabled, how many past epochs of identities to fetch initially (e.g. 3 will retrieve roughly the last three epochs of data).
 ```
 
+The variables `USE_PUBLIC_BOOTSTRAP` and `BOOTSTRAP_EPOCHS` control the one-time
+bootstrap from the official Idena API. Set `USE_PUBLIC_BOOTSTRAP` to `true` to
+download recent epochs on first start, and adjust `BOOTSTRAP_EPOCHS` to specify
+how many epochs should be fetched.
+
 You can put these in a rolling_indexer/config.json file or export them as environment variables. For example, to run with environment variables:
 
 ```bash
