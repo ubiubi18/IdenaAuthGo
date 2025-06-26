@@ -36,6 +36,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"idenauthgo/eligibility"
 )
 
 // Config holds runtime settings loaded from env or config.json
@@ -424,16 +426,6 @@ func handleLatest(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(list)
 }
 
-func isEligibleSnapshot(state string, stake float64, threshold float64) bool {
-	if state == "Human" && stake >= threshold {
-		return true
-	}
-	if (state == "Verified" || state == "Newbie") && stake >= 10000 {
-		return true
-	}
-	return false
-}
-
 func queryEligibleSnapshots() ([]Snapshot, error) {
 	_, thr, err := getEpochAndThreshold()
 	if err != nil || thr == 0 {
@@ -460,7 +452,7 @@ func queryEligibleSnapshots() ([]Snapshot, error) {
 	// filter by eligibility rules using the latest threshold
 	var list []Snapshot
 	for _, s := range all {
-		if isEligibleSnapshot(s.State, s.Stake, thr) {
+		if eligibility.IsEligibleSnapshot(s.State, s.Stake, thr) {
 			list = append(list, s)
 		}
 	}

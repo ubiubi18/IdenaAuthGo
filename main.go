@@ -25,6 +25,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	_ "github.com/mattn/go-sqlite3"
+	"idenauthgo/eligibility"
 )
 
 // Environment variables, with fallback for local/dev usage
@@ -603,16 +604,6 @@ func fetchEpochIdentities(epoch int) ([]epochIdentity, error) {
 	return list, nil
 }
 
-func isEligibleSnapshot(state string, stake float64, threshold float64) bool {
-	if state == "Human" && stake >= threshold {
-		return true
-	}
-	if (state == "Verified" || state == "Newbie") && stake >= 10000 {
-		return true
-	}
-	return false
-}
-
 // nextEpochHint provides a short message describing what the identity must do
 // to be eligible in the next epoch based on the current live state and stake.
 func nextEpochHint(state string, stake float64, threshold float64) string {
@@ -638,7 +629,7 @@ func nextEpochHint(state string, stake float64, threshold float64) string {
 // predictNextEpoch compares current snapshot eligibility with the live state
 // and stake to predict eligibility for the next epoch.
 func predictNextEpoch(snapshotEligible bool, liveState string, liveStake float64, threshold float64) string {
-	liveEligible := isEligibleSnapshot(liveState, liveStake, threshold)
+	liveEligible := eligibility.IsEligibleSnapshot(liveState, liveStake, threshold)
 	switch {
 	case snapshotEligible && !liveEligible:
 		return "eligible this epoch, but not next"
@@ -669,7 +660,7 @@ func buildEpochWhitelist(epoch int, threshold float64) error {
 			Penalized:    penalized,
 			FlipReported: flip,
 		})
-		if isEligibleSnapshot(id.State, id.Stake, threshold) && !penalized && !flip {
+		if eligibility.IsEligibleFull(id.State, id.Stake, penalized, flip, threshold) {
 			list = append(list, id.Address)
 		}
 	}
@@ -1111,7 +1102,7 @@ func whitelistCheckHandler(w http.ResponseWriter, r *http.Request) {
 		} else if flip {
 			reason = "Flip reported"
 			rule = "flip"
-		} else if isEligibleSnapshot(state, stake, stakeThreshold) {
+		} else if eligibility.IsEligibleSnapshot(state, stake, stakeThreshold) {
 			eligible = true
 			rule = "snapshot"
 		} else {
@@ -1175,7 +1166,7 @@ func eligibilitySnapshotHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Reason = "Validation penalty"
 	} else if flip {
 		resp.Reason = "Flip reported"
-	} else if isEligibleSnapshot(state, stake, stakeThreshold) {
+	} else if eligibility.IsEligibleSnapshot(state, stake, stakeThreshold) {
 		resp.Eligible = true
 	} else {
 		resp.Reason = fmt.Sprintf("Not eligible in snapshot: %s %.0f", state, stake)
