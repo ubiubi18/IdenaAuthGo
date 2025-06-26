@@ -424,20 +424,47 @@ func handleLatest(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(list)
 }
 
+func isEligibleSnapshot(state string, stake float64, threshold float64) bool {
+	if state == "Human" && stake >= threshold {
+		return true
+	}
+	if (state == "Verified" || state == "Newbie") && stake >= 10000 {
+		return true
+	}
+	return false
+}
+
 func queryEligibleSnapshots() ([]Snapshot, error) {
+	_, thr, err := getEpochAndThreshold()
+	if err != nil || thr == 0 {
+		thr = 10000 // sensible fallback if API unavailable
+	}
+
 	rows, err := db.Query(`
         SELECT s.address, s.state, s.stake, s.ts
         FROM snapshots s
         JOIN (
             SELECT address, MAX(ts) m FROM snapshots GROUP BY address
         ) last ON s.address=last.address AND s.ts=last.m
-        WHERE s.state IN ('Human','Verified','Newbie') AND s.stake >= 10000
+        WHERE s.state IN ('Human','Verified','Newbie')
     `)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return rowsToSnapshots(rows)
+	all, err := rowsToSnapshots(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	// filter by eligibility rules using the latest threshold
+	var list []Snapshot
+	for _, s := range all {
+		if isEligibleSnapshot(s.State, s.Stake, thr) {
+			list = append(list, s)
+		}
+	}
+	return list, nil
 }
 
 func handleEligible(w http.ResponseWriter, r *http.Request) {
