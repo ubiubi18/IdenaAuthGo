@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -174,14 +175,88 @@ func RunIdentityFetcherOnce(cfg *FetcherConfig, overrideFile string) error {
 			return fmt.Errorf("load address list: %w", err)
 		}
 	} else {
-		url := cfg.IndexerURL
-		if url == "" {
-			url = defaultIndexerURL
-		}
-		log.Printf("[AGENT][Fetcher] fetching addresses from %s", url)
-		addresses, err = FetchAddressesFromIndexer(url)
+		// find the block where ShortSessionStarted flag appears
+		last, err := fetchLastBlock(cfg.NodeURL, cfg.ApiKey)
 		if err != nil {
-			return fmt.Errorf("fetch addresses from indexer: %w", err)
+			return fmt.Errorf("fetch last block: %w", err)
+		}
+		shortHeight := 0
+		for h := last.Height; h >= 0 && h >= last.Height-2000; h-- {
+			blk, err := fetchBlockREST(cfg.NodeURL, cfg.ApiKey, h)
+			if err != nil {
+				continue
+			}
+			if containsFlag(blk, "ShortSessionStarted") {
+				shortHeight = h
+				break
+			}
+		}
+		if shortHeight == 0 {
+			return fmt.Errorf("ShortSessionStarted block not found")
+		}
+
+		// helper to fetch all transactions of a block via REST
+		type tx struct {
+			From string `json:"from"`
+		}
+		fetchTxs := func(height int) ([]tx, error) {
+			base := strings.TrimRight(cfg.NodeURL, "/") + fmt.Sprintf("/api/Block/%d/Txs", height)
+			if cfg.ApiKey != "" {
+				base += "?apikey=" + cfg.ApiKey
+			}
+			cont := ""
+			var all []tx
+			for {
+				url := base
+				if cont != "" {
+					if strings.Contains(url, "?") {
+						url += "&continuationToken=" + cont
+					} else {
+						url += "?continuationToken=" + cont
+					}
+				}
+				resp, err := http.Get(url)
+				if err != nil {
+					return all, err
+				}
+				var out struct {
+					Result       []tx   `json:"result"`
+					Continuation string `json:"continuationToken"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+					resp.Body.Close()
+					return all, err
+				}
+				resp.Body.Close()
+				if out.Result != nil {
+					all = append(all, out.Result...)
+				}
+				if out.Continuation == "" {
+					break
+				}
+				cont = out.Continuation
+				time.Sleep(100 * time.Millisecond)
+			}
+			return all, nil
+		}
+
+		unique := make(map[string]struct{})
+		blocks := 0
+		h := shortHeight
+		for blocks < 7 {
+			txs, err := fetchTxs(h)
+			if err == nil && len(txs) > 0 {
+				blocks++
+				for _, t := range txs {
+					if t.From != "" {
+						unique[strings.ToLower(t.From)] = struct{}{}
+					}
+				}
+			}
+			h++
+		}
+		for a := range unique {
+			addresses = append(addresses, a)
 		}
 	}
 	log.Printf("[AGENT][Fetcher] using %d addresses", len(addresses))
