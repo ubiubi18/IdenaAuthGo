@@ -67,6 +67,8 @@ var (
 	fbPerAddr = make(map[string]*fbInfo)
 
 	tracked = make(map[string]struct{})
+
+	errEpochNotFound = errors.New("epoch not found")
 )
 
 type fbInfo struct {
@@ -537,12 +539,75 @@ func getEpochAndThreshold() (int, float64, error) {
 	return out.Result.Epoch, thr, nil
 }
 
+// getEpochAndThresholdFor returns the epoch data for a specific epoch number
+// by querying the local node's HTTP API. If the node responds with 404, an
+// errEpochNotFound error is returned.
+func getEpochAndThresholdFor(ep int) (int, float64, error) {
+	url := fmt.Sprintf("%s/api/Epoch/%d", strings.TrimRight(cfg.RPCURL, "/"), ep)
+	if cfg.RPCKey != "" {
+		url += "?apikey=" + cfg.RPCKey
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return 0, 0, errEpochNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("status %s", resp.Status)
+	}
+	var out struct {
+		Result struct {
+			Epoch     int    `json:"epoch"`
+			Threshold string `json:"discriminationStakeThreshold"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, 0, err
+	}
+	thr, _ := strconv.ParseFloat(out.Result.Threshold, 64)
+	return out.Result.Epoch, thr, nil
+}
+
 // handleEpochLast serves the /api/Epoch/Last endpoint.
 func handleEpochLast(w http.ResponseWriter, r *http.Request) {
 	epoch, thr, err := getEpochAndThreshold()
 	if err != nil {
 		epoch = 0
 		thr = 0
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"result": map[string]interface{}{
+			"epoch":                        epoch,
+			"discriminationStakeThreshold": thr,
+		},
+	})
+}
+
+// handleEpoch serves the /api/Epoch/<N> endpoint where <N> is an epoch number.
+// It returns the epoch data in the same format as handleEpochLast.
+func handleEpoch(w http.ResponseWriter, r *http.Request) {
+	epStr := strings.TrimPrefix(r.URL.Path, "/api/Epoch/")
+	if epStr == "" || epStr == "Last" {
+		http.NotFound(w, r)
+		return
+	}
+	ep, err := strconv.Atoi(epStr)
+	if err != nil {
+		http.Error(w, "bad epoch", http.StatusBadRequest)
+		return
+	}
+	epoch, thr, err := getEpochAndThresholdFor(ep)
+	if err != nil {
+		if errors.Is(err, errEpochNotFound) {
+			http.Error(w, "not found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -575,6 +640,7 @@ func main() {
 	http.HandleFunc("/identities/eligible", handleEligible)
 	http.HandleFunc("/api/whitelist/current", handleAPIWhitelistCurrent)
 	http.HandleFunc("/api/Epoch/Last", handleEpochLast)
+	http.HandleFunc("/api/Epoch/", handleEpoch)
 	http.HandleFunc("/identity/", handleIdentity)
 	http.HandleFunc("/state/", handleState)
 
