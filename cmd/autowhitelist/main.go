@@ -114,7 +114,10 @@ func fetchAllTxs(nodeURL, apiKey string, height int) ([]tx, error) {
 		if err := apiGet(nodeURL, apiKey, path, &res); err != nil {
 			return all, err
 		}
-		if res.Result != nil {
+		// The API returns "result": null for empty blocks (and rarely
+		// "result": []), so len(Result) indicates whether the block
+		// actually contains transactions.
+		if len(res.Result) > 0 {
 			all = append(all, res.Result...)
 		}
 		if res.Continuation == "" {

@@ -186,6 +186,74 @@ func TestBuildEpochWhitelistFallback(t *testing.T) {
 	}
 }
 
+func TestBuildEpochWhitelistSkipEmptyBlock(t *testing.T) {
+	cases := []struct {
+		name  string
+		empty interface{}
+	}{
+		{"null", nil},
+		{"empty", []interface{}{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupTestDB(t)
+
+			oldFetch := fetchEpochIdentitiesFn
+			fetchEpochIdentitiesFn = func(epoch int) ([]epochIdentity, error) { return nil, fmt.Errorf("fail") }
+			defer func() { fetchEpochIdentitiesFn = oldFetch }()
+
+			requiredBlocks = 1
+			defer func() { requiredBlocks = 7 }()
+
+			oldClient := http.DefaultClient
+			defer func() { http.DefaultClient = oldClient }()
+
+			http.DefaultClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				switch req.URL.String() {
+				case fallbackApiUrl + "/api/Epoch/9":
+					resp := map[string]interface{}{"result": map[string]int{"validationFirstBlockHeight": 100}}
+					b, _ := json.Marshal(resp)
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(b)), Header: make(http.Header)}, nil
+				case fallbackApiUrl + "/api/Block/115":
+					resp := map[string]interface{}{"result": map[string]interface{}{"flags": []string{"ShortSessionStarted"}}}
+					b, _ := json.Marshal(resp)
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(b)), Header: make(http.Header)}, nil
+				case fallbackApiUrl + "/api/Block/115/Txs?limit=100":
+					resp := map[string]interface{}{"result": tc.empty}
+					b, _ := json.Marshal(resp)
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(b)), Header: make(http.Header)}, nil
+				case fallbackApiUrl + "/api/Block/116/Txs?limit=100":
+					resp := map[string]interface{}{"result": []map[string]string{{"from": "0xdef"}}}
+					b, _ := json.Marshal(resp)
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(b)), Header: make(http.Header)}, nil
+				case fallbackApiUrl + "/api/Epoch/9/Authors/Bad?limit=100":
+					resp := map[string]interface{}{"result": []interface{}{}, "continuationToken": ""}
+					b, _ := json.Marshal(resp)
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(b)), Header: make(http.Header)}, nil
+				case fallbackApiUrl + "/api/Epoch/9/Identity/0xdef/ValidationSummary":
+					resp := map[string]interface{}{"result": map[string]interface{}{"state": "Human", "stake": "15000", "approved": true, "penalized": false}}
+					b, _ := json.Marshal(resp)
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(b)), Header: make(http.Header)}, nil
+				default:
+					return nil, fmt.Errorf("unexpected url %s", req.URL.String())
+				}
+			})}
+
+			if err := buildEpochWhitelist(10, 12000); err != nil {
+				t.Fatalf("build fallback: %v", err)
+			}
+
+			list, err := getWhitelist()
+			if err != nil {
+				t.Fatalf("get whitelist: %v", err)
+			}
+			if len(list) != 1 || list[0] != "0xdef" {
+				t.Fatalf("unexpected whitelist %v", list)
+			}
+		})
+	}
+}
+
 func TestSanitizeBaseURL(t *testing.T) {
 	httpsURL := sanitizeBaseURL("http://proofofhuman.work")
 	if httpsURL != "https://proofofhuman.work" {
