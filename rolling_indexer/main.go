@@ -511,6 +511,48 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(list)
 }
 
+// getEpochAndThreshold fetches the current epoch and discrimination stake threshold
+// from the local node's HTTP API. If the data cannot be retrieved, zero values
+// are returned with an error.
+func getEpochAndThreshold() (int, float64, error) {
+	url := strings.TrimRight(cfg.RPCURL, "/") + "/api/Epoch/Last"
+	if cfg.RPCKey != "" {
+		url += "?apikey=" + cfg.RPCKey
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Result struct {
+			Epoch     int    `json:"epoch"`
+			Threshold string `json:"discriminationStakeThreshold"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, 0, err
+	}
+	thr, _ := strconv.ParseFloat(out.Result.Threshold, 64)
+	return out.Result.Epoch, thr, nil
+}
+
+// handleEpochLast serves the /api/Epoch/Last endpoint.
+func handleEpochLast(w http.ResponseWriter, r *http.Request) {
+	epoch, thr, err := getEpochAndThreshold()
+	if err != nil {
+		epoch = 0
+		thr = 0
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"result": map[string]interface{}{
+			"epoch":                        epoch,
+			"discriminationStakeThreshold": thr,
+		},
+	})
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	cfg = loadConfig()
@@ -532,6 +574,7 @@ func main() {
 	http.HandleFunc("/identities/latest", handleLatest)
 	http.HandleFunc("/identities/eligible", handleEligible)
 	http.HandleFunc("/api/whitelist/current", handleAPIWhitelistCurrent)
+	http.HandleFunc("/api/Epoch/Last", handleEpochLast)
 	http.HandleFunc("/identity/", handleIdentity)
 	http.HandleFunc("/state/", handleState)
 
