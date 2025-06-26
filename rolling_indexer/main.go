@@ -74,6 +74,32 @@ var (
 	errEpochNotFound = errors.New("epoch not found")
 )
 
+const idenaAPI = "https://api.idena.io"
+
+func callPublicRPC(method string, params interface{}, out interface{}) error {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  method,
+		"params":  params,
+	}
+	b, _ := json.Marshal(reqBody)
+	req, err := http.NewRequest(http.MethodPost, idenaAPI, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %s", resp.Status)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
 type fbInfo struct {
 	Count  int
 	Window time.Time
@@ -158,21 +184,12 @@ func dbIsEmpty() bool {
 }
 
 func fetchPublicEpoch() (int, error) {
-	// Always use the official Idena API for epoch data
-	resp, err := http.Get("https://api.idena.io/api/Epoch/Last")
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("status %s", resp.Status)
-	}
 	var out struct {
 		Result struct {
 			Epoch int `json:"epoch"`
 		} `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := callPublicRPC("dna_epochLast", []interface{}{}, &out); err != nil {
 		return 0, err
 	}
 	return out.Result.Epoch, nil
@@ -180,43 +197,18 @@ func fetchPublicEpoch() (int, error) {
 
 // fetchRESTEpoch returns the latest epoch using the public REST API.
 func fetchRESTEpoch() (int, error) {
-	resp, err := http.Get("https://api.idena.io/api/Epoch/Last")
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("status %s", resp.Status)
-	}
 	var out struct {
 		Result struct {
 			Epoch int `json:"epoch"`
 		} `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := callPublicRPC("dna_epochLast", []interface{}{}, &out); err != nil {
 		return 0, err
 	}
 	return out.Result.Epoch, nil
 }
 
 func fetchPublicEpochIdentities(epoch int) ([]Snapshot, error) {
-	req := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"method":  "dna_epochIdentities",
-		"params":  []interface{}{epoch, 0},
-		"id":      1,
-	}
-	body, _ := json.Marshal(req)
-	// Use the public REST API endpoint instead of the old rpc.idena.io
-	// endpoint (which now serves a web app and returns HTML).
-	resp, err := http.Post("https://api.idena.io", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status %s", resp.Status)
-	}
 	var out struct {
 		Result []struct {
 			Address string `json:"address"`
@@ -224,7 +216,7 @@ func fetchPublicEpochIdentities(epoch int) ([]Snapshot, error) {
 			Stake   string `json:"stake"`
 		} `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := callPublicRPC("dna_epochIdentities", []interface{}{epoch, 0}, &out); err != nil {
 		return nil, err
 	}
 	list := make([]Snapshot, 0, len(out.Result))
@@ -235,48 +227,29 @@ func fetchPublicEpochIdentities(epoch int) ([]Snapshot, error) {
 	return list, nil
 }
 
-// restDelay controls the pause between REST API requests to avoid rate limits.
+// restDelay controls the pause between public API requests to avoid rate limits.
 const restDelay = 200 * time.Millisecond
 
 // fetchRESTEpochIdentities retrieves identity data for an epoch using the
-// official REST API. It falls back to the ValidationSummary endpoint for each
-// address to obtain stake information.
+// public API via JSON-RPC and handles pagination.
 func fetchRESTEpochIdentities(epoch int) ([]Snapshot, error) {
 	cont := ""
 	var list []Snapshot
 	for {
-		url := fmt.Sprintf("https://api.idena.io/api/Epoch/%d/Identities?limit=100", epoch)
-		if cont != "" {
-			url += "&continuationToken=" + cont
-		}
-		resp, err := http.Get(url)
-		if err != nil {
-			return list, err
-		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return list, fmt.Errorf("status %s", resp.Status)
-		}
 		var out struct {
 			Result []struct {
 				Address string `json:"address"`
+				State   string `json:"state"`
+				Stake   string `json:"stake"`
 			} `json:"result"`
 			Continuation string `json:"continuationToken"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-			resp.Body.Close()
+		if err := callPublicRPC("dna_epochIdentities", []interface{}{epoch, cont}, &out); err != nil {
 			return list, err
 		}
-		resp.Body.Close()
 		for _, r := range out.Result {
-			sum, err := checks.FetchValidationSummary(checks.APIBase, "", epoch, r.Address)
-			if err != nil {
-				time.Sleep(restDelay)
-				continue
-			}
-			stake, _ := strconv.ParseFloat(sum.Stake, 64)
-			list = append(list, Snapshot{Address: strings.ToLower(r.Address), State: sum.State, Stake: stake})
-			time.Sleep(restDelay)
+			stake, _ := strconv.ParseFloat(r.Stake, 64)
+			list = append(list, Snapshot{Address: strings.ToLower(r.Address), State: r.State, Stake: stake})
 		}
 		if out.Continuation == "" {
 			break
@@ -379,15 +352,6 @@ func fetchIdentityFallback(addr string) (*Snapshot, error) {
 	fbTotal++
 	fbMu.Unlock()
 
-	url := fmt.Sprintf("https://api.idena.io/api/Identity/%s", addr)
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fallback status %s", resp.Status)
-	}
 	var res struct {
 		Result struct {
 			Address string `json:"address"`
@@ -395,7 +359,7 @@ func fetchIdentityFallback(addr string) (*Snapshot, error) {
 			Stake   string `json:"stake"`
 		} `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+	if err := callPublicRPC("dna_identity", []interface{}{addr}, &res); err != nil {
 		return nil, err
 	}
 	stake, _ := strconv.ParseFloat(res.Result.Stake, 64)
