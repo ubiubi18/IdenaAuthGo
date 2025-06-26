@@ -164,6 +164,11 @@ func fetchAccountInfos(addresses []string, apiKey string) map[string]AccountInfo
                 }()
         }
 
-        wg.Wait()
-        return results
+       wg.Wait()
+       return results
+}
+
+// FetchAccountInfos exposes fetchAccountInfos for other packages.
+func FetchAccountInfos(addresses []string, apiKey string) map[string]AccountInfo {
+        return fetchAccountInfos(addresses, apiKey)
 }
