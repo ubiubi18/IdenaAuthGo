@@ -130,15 +130,14 @@ func fetchEpochData() (int, float64, error) {
 	defer resp.Body.Close()
 	var result struct {
 		Result struct {
-			Epoch     int    `json:"epoch"`
-			Threshold string `json:"discriminationStakeThreshold"`
+			Epoch     int     `json:"epoch"`
+			Threshold float64 `json:"discriminationStakeThreshold"`
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return 0, 0, err
 	}
-	thr, _ := strconv.ParseFloat(result.Result.Threshold, 64)
-	return result.Result.Epoch, thr, nil
+	return result.Result.Epoch, result.Result.Threshold, nil
 }
 
 func main() {
@@ -1514,9 +1513,9 @@ func saveEpoch(epoch int, vt int64, thr float64) {
 func fetchEpochFromNode() (int, int64, float64, error) {
 	var resp struct {
 		Result struct {
-			Epoch          int    `json:"epoch"`
-			ValidationTime string `json:"validationTime"`
-			Threshold      string `json:"discriminationStakeThreshold"`
+			Epoch          int     `json:"epoch"`
+			ValidationTime string  `json:"validationTime"`
+			Threshold      float64 `json:"discriminationStakeThreshold"`
 		} `json:"result"`
 		Error *struct {
 			Code    int    `json:"code"`
@@ -1530,8 +1529,7 @@ func fetchEpochFromNode() (int, int64, float64, error) {
 		return 0, 0, 0, fmt.Errorf(resp.Error.Message)
 	}
 	vt, _ := time.Parse(time.RFC3339, resp.Result.ValidationTime)
-	thr, _ := strconv.ParseFloat(resp.Result.Threshold, 64)
-	return resp.Result.Epoch, vt.Unix(), thr, nil
+	return resp.Result.Epoch, vt.Unix(), resp.Result.Threshold, nil
 }
 
 // fetchEpochFromAPI gets epoch info from the public API.
@@ -1546,17 +1544,16 @@ func fetchEpochFromAPI() (int, int64, float64, error) {
 	}
 	var apiResp struct {
 		Result struct {
-			Epoch          int    `json:"epoch"`
-			ValidationTime string `json:"validationTime"`
-			Threshold      string `json:"discriminationStakeThreshold"`
+			Epoch          int     `json:"epoch"`
+			ValidationTime string  `json:"validationTime"`
+			Threshold      float64 `json:"discriminationStakeThreshold"`
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return 0, 0, 0, err
 	}
 	vt, _ := time.Parse(time.RFC3339, apiResp.Result.ValidationTime)
-	thr, _ := strconv.ParseFloat(apiResp.Result.Threshold, 64)
-	return apiResp.Result.Epoch, vt.Unix(), thr, nil
+	return apiResp.Result.Epoch, vt.Unix(), apiResp.Result.Threshold, nil
 }
 
 // updateEpochCache tries to refresh epoch info from the node, falling back to the public API.

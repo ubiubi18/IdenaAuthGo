@@ -162,15 +162,14 @@ func getEpochLast(nodeURL, apiKey string) (int, float64, error) {
 	defer resp.Body.Close()
 	var out struct {
 		Result struct {
-			Epoch     int    `json:"epoch"`
-			Threshold string `json:"discriminationStakeThreshold"`
+			Epoch     int     `json:"epoch"`
+			Threshold float64 `json:"discriminationStakeThreshold"`
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return 0, 0, err
 	}
-	thr, _ := strconv.ParseFloat(out.Result.Threshold, 64)
-	return out.Result.Epoch, thr, nil
+	return out.Result.Epoch, out.Result.Threshold, nil
 }
 
 // fetchBadAuthors returns a set of bad authors for the given epoch.

@@ -616,8 +616,8 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 func getEpochAndThreshold() (int, float64, error) {
 	var out struct {
 		Result struct {
-			Epoch     int    `json:"epoch"`
-			Threshold string `json:"discriminationStakeThreshold"`
+			Epoch     int     `json:"epoch"`
+			Threshold float64 `json:"discriminationStakeThreshold"`
 		} `json:"result"`
 		Error *struct {
 			Message string `json:"message"`
@@ -629,8 +629,7 @@ func getEpochAndThreshold() (int, float64, error) {
 	if out.Error != nil && out.Error.Message != "" {
 		return 0, 0, errors.New(out.Error.Message)
 	}
-	thr, _ := strconv.ParseFloat(out.Result.Threshold, 64)
-	return out.Result.Epoch, thr, nil
+	return out.Result.Epoch, out.Result.Threshold, nil
 }
 
 // getEpochAndThresholdFor returns epoch data for the given epoch using JSON-RPC.
@@ -638,8 +637,8 @@ func getEpochAndThreshold() (int, float64, error) {
 func getEpochAndThresholdFor(ep int) (int, float64, error) {
 	var out struct {
 		Result struct {
-			Epoch     int    `json:"epoch"`
-			Threshold string `json:"discriminationStakeThreshold"`
+			Epoch     int     `json:"epoch"`
+			Threshold float64 `json:"discriminationStakeThreshold"`
 		} `json:"result"`
 		Error *struct {
 			Message string `json:"message"`
@@ -654,8 +653,7 @@ func getEpochAndThresholdFor(ep int) (int, float64, error) {
 	if out.Error != nil && out.Error.Message != "" {
 		return 0, 0, errors.New(out.Error.Message)
 	}
-	thr, _ := strconv.ParseFloat(out.Result.Threshold, 64)
-	return out.Result.Epoch, thr, nil
+	return out.Result.Epoch, out.Result.Threshold, nil
 }
 
 // handleEpochLast serves the /api/Epoch/Last endpoint.
