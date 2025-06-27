@@ -29,8 +29,8 @@ const (
 
 type epochLastResp struct {
 	Result struct {
-		Epoch     int    `json:"epoch"`
-		Threshold string `json:"discriminationStakeThreshold"`
+		Epoch     int     `json:"epoch"`
+		Threshold float64 `json:"discriminationStakeThreshold"`
 	} `json:"result"`
 }
 
@@ -82,8 +82,7 @@ func getLatestEpochInfo(nodeURL, apiKey string) (int, float64, error) {
 	if err := apiGet(nodeURL, apiKey, "/api/Epoch/Last", &res); err != nil {
 		return 0, 0, err
 	}
-	thr, _ := strconv.ParseFloat(res.Result.Threshold, 64)
-	return res.Result.Epoch, thr, nil
+	return res.Result.Epoch, res.Result.Threshold, nil
 }
 
 func getEpochInfo(nodeURL, apiKey string, epoch int) (int, error) {

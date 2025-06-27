@@ -23,9 +23,9 @@ const (
 )
 
 type epochInfo struct {
-	Epoch                int    `json:"epoch"`
-	Threshold            string `json:"discriminationStakeThreshold"`
-	ValidationFirstBlock int    `json:"validationFirstBlockHeight"`
+	Epoch                int     `json:"epoch"`
+	Threshold            float64 `json:"discriminationStakeThreshold"`
+	ValidationFirstBlock int     `json:"validationFirstBlockHeight"`
 }
 
 type blockResp struct {
@@ -60,15 +60,14 @@ func getJSON(url string, out interface{}) error {
 func getLatestEpochInfo() (int, float64, error) {
 	var data struct {
 		Result struct {
-			Epoch     int    `json:"epoch"`
-			Threshold string `json:"discriminationStakeThreshold"`
+			Epoch     int     `json:"epoch"`
+			Threshold float64 `json:"discriminationStakeThreshold"`
 		} `json:"result"`
 	}
 	if err := getJSON("https://api.idena.io/api/Epoch/Last", &data); err != nil {
 		return 0, 0, err
 	}
-	thr, _ := strconv.ParseFloat(data.Result.Threshold, 64)
-	return data.Result.Epoch, thr, nil
+	return data.Result.Epoch, data.Result.Threshold, nil
 }
 
 func getEpochInfo(epoch int) (int, error) {

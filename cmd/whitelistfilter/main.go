@@ -34,13 +34,13 @@ func getThreshold(nodeURL, apiKey string, epoch int) (float64, error) {
 	defer resp.Body.Close()
 	var out struct {
 		Result struct {
-			Threshold string `json:"discriminationStakeThreshold"`
+			Threshold float64 `json:"discriminationStakeThreshold"`
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return 0, err
 	}
-	return strconv.ParseFloat(out.Result.Threshold, 64)
+	return out.Result.Threshold, nil
 }
 
 func main() {
