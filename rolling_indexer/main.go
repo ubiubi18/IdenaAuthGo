@@ -100,6 +100,33 @@ func callPublicRPC(method string, params interface{}, out interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+func callLocalRPC(method string, params interface{}, out interface{}) error {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  method,
+		"params":  params,
+	}
+	if cfg.RPCKey != "" {
+		reqBody["key"] = cfg.RPCKey
+	}
+	b, _ := json.Marshal(reqBody)
+	req, err := http.NewRequest(http.MethodPost, cfg.RPCURL, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %s", resp.Status)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
 type fbInfo struct {
 	Count  int
 	Window time.Time
@@ -584,59 +611,48 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(list)
 }
 
-// getEpochAndThreshold fetches the current epoch and discrimination stake threshold
-// from the local node's HTTP API. If the data cannot be retrieved, zero values
-// are returned with an error.
+// getEpochAndThreshold returns the current epoch and discrimination stake threshold
+// from the local node via JSON-RPC.
 func getEpochAndThreshold() (int, float64, error) {
-	url := strings.TrimRight(cfg.RPCURL, "/") + "/api/Epoch/Last"
-	if cfg.RPCKey != "" {
-		url += "?apikey=" + cfg.RPCKey
-	}
-	resp, err := http.Get(url)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer resp.Body.Close()
 	var out struct {
 		Result struct {
 			Epoch     int    `json:"epoch"`
 			Threshold string `json:"discriminationStakeThreshold"`
 		} `json:"result"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := callLocalRPC("dna_epoch", []interface{}{}, &out); err != nil {
 		return 0, 0, err
+	}
+	if out.Error != nil && out.Error.Message != "" {
+		return 0, 0, errors.New(out.Error.Message)
 	}
 	thr, _ := strconv.ParseFloat(out.Result.Threshold, 64)
 	return out.Result.Epoch, thr, nil
 }
 
-// getEpochAndThresholdFor returns the epoch data for a specific epoch number
-// by querying the local node's HTTP API. If the node responds with 404, an
-// errEpochNotFound error is returned.
+// getEpochAndThresholdFor returns epoch data for the given epoch using JSON-RPC.
+// If the node reports the epoch is unknown, errEpochNotFound is returned.
 func getEpochAndThresholdFor(ep int) (int, float64, error) {
-	url := fmt.Sprintf("%s/api/Epoch/%d", strings.TrimRight(cfg.RPCURL, "/"), ep)
-	if cfg.RPCKey != "" {
-		url += "?apikey=" + cfg.RPCKey
-	}
-	resp, err := http.Get(url)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return 0, 0, errEpochNotFound
-	}
-	if resp.StatusCode != http.StatusOK {
-		return 0, 0, fmt.Errorf("status %s", resp.Status)
-	}
 	var out struct {
 		Result struct {
 			Epoch     int    `json:"epoch"`
 			Threshold string `json:"discriminationStakeThreshold"`
 		} `json:"result"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := callLocalRPC("dna_epoch", []interface{}{ep}, &out); err != nil {
 		return 0, 0, err
+	}
+	if out.Error != nil && strings.Contains(strings.ToLower(out.Error.Message), "not") {
+		return 0, 0, errEpochNotFound
+	}
+	if out.Error != nil && out.Error.Message != "" {
+		return 0, 0, errors.New(out.Error.Message)
 	}
 	thr, _ := strconv.ParseFloat(out.Result.Threshold, 64)
 	return out.Result.Epoch, thr, nil
