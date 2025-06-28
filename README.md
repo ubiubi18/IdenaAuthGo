@@ -48,7 +48,7 @@ Set the necessary values in .env (or as actual environment variables):
 ```
 BASE_URL – the base URL for your running backend (e.g. http://localhost:3030)
 
-IDENA_RPC_KEY – (optional) your Idena node’s API key, if your node requires one for RPC calls
+IDENA_RPC_KEY – (optional) your Idena node’s API key, if your node requires one for RPC calls. Never hardcode or log this value.
 ```
 
 For example, on a Unix-like system you can export them directly:

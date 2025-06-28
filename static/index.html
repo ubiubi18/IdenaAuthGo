@@ -1,168 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Eligibility Checker | proof of human</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <style>
-    body {
-      background: #16181c;
-      color: #f5f7fa;
-      margin: 0;
-      padding: 0;
-      font-family: system-ui, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .container {
-      width: 100%;
-      max-width: 420px;
-      margin: 28px auto 0 auto;
-      padding: 0 8px;
-      box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
-      gap: 26px;
-    }
-    .card {
-      background: #20232a;
-      border-radius: 14px;
-      box-shadow: 0 4px 24px #2360ff12;
-      padding: 24px 18px 18px 18px;
-      text-align: center;
-    }
-    .card h1, .card h2 {
-      margin-top: 0;
-      margin-bottom: 12px;
-      color: #62a6ff;
-      font-size: 1.3em;
-    }
-    .card p {
-      margin: 8px 0 0 0;
-      color: #ccd6e0;
-      font-size: 1em;
-    }
-    .btn-primary {
-      display: block;
-      width: 100%;
-      margin: 14px 0;
-      background: linear-gradient(90deg, #2261a6 60%, #348ffe 100%);
-      color: #fff;
-      padding: 18px 0;
-      border: none;
-      border-radius: 8px;
-      font-size: 1.2em;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 2px 8px #2261a644;
-      transition: background 0.2s;
-    }
-    .btn-primary:hover {
-      background: linear-gradient(90deg, #348ffe 30%, #2261a6 100%);
-    }
-    .signin-link {
-      display: block;
-      width: 100%;
-      margin: 8px 0;
-      background: #ccc;
-      color: #666;
-      padding: 10px 0;
-      border-radius: 8px;
-      font-size: 0.95em;
-      text-decoration: none;
-    }
-    .signin-link:hover {
-      background: #aaa;
-      color: #333;
-    }
-    .rules {
-      list-style: disc;
-      text-align: left;
-      margin: 8px 0 0 18px;
-      color: #9eb2c5;
-      font-size: 0.99em;
-    }
-    .rules li {
-      margin-bottom: 6px;
-    }
-      color: #89bbfd;
-      font-weight: 600;
-      display: block;
-      font-size: 1.08em;
-      margin: 16px 0 4px 0;
-      text-decoration: underline dotted;
-      word-break: break-all;
-    }
-    .disclaimer {
-      background: #24272e;
-      color: #a9bacd;
-      border-radius: 10px;
-      font-size: 0.97em;
-      padding: 17px 13px 13px 13px;
-      margin-bottom: 12px;
-      text-align: left;
-      box-shadow: 0 2px 8px #33446633;
-    }
-    @media (max-width: 500px) {
-      .container { max-width: 98vw; }
-      .card, .disclaimer { padding: 16px 7px 11px 7px; }
-      .btn-primary { font-size: 1em; }
-      .github-link { font-size: 1em; }
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Idena Whitelist API</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial,Helvetica,sans-serif;margin:2rem;background:#f4f4f4;color:#333;}
+pre{background:#eee;padding:1rem;border-radius:8px;overflow:auto;}
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="card">
-      <h1>Eligibility Checker</h1>
-      <p>Check an address or sign in with Idena.</p>
-      <input id="addr" type="text" placeholder="0x..." style="width:100%;padding:12px;border-radius:8px;border:1px solid #555;background:#2b2e34;color:#fff;" />
-      <button class="btn-primary" onclick="checkAddr()">Check address</button>
-      <div id="result" style="white-space:pre-wrap;margin:8px 0 0 0;"></div>
-      <a href="/signin" class="signin-link">Sign in with Idena</a>
-      <ul class="rules">
-        <li>Must be <strong>Human</strong>, <strong>Verified</strong>, or <strong>Newbie</strong></li>
-        <li>Human: must meet the current threshold (<strong id="human-threshold">...</strong> IDNA)</li>
-        <li>Verified/Newbie: must have 10,000+ IDNA at stake</li>
-        <li>Must NOT be excluded for flip reporting or penalties ("shitflipper" exclusion)</li>
-      </ul>
-    </div>
-    <a class="github-link" href="https://github.com/ubiubi18/IdenaAuthGo" target="_blank" rel="noopener">Source on GitHub</a>
-    <div class="disclaimer">
-      <b>Disclaimer:</b> This is a hobby, non-commercial, experimental project. No guarantee of accuracy, completeness, security, or availability. Use at your own risk. Source on GitHub.
-    </div>
-  </div>
+<h1>Idena Whitelist API</h1>
+<p>This server provides endpoints to build and download strict whitelists from your local Idena node.</p>
+<h2>Example usage</h2>
+<pre>
+# trigger a new snapshot
+curl http://localhost:8081/snapshot
+
+# download the latest whitelist
+curl -L http://localhost:8081/whitelist/download -o whitelist.jsonl
+
+# check a single address
+curl "http://localhost:8081/whitelist/check?address=0x..."
+</pre>
+<p>The <code>IDENA_RPC_KEY</code> environment variable must be set if your node requires an API key.</p>
+<p>You can replace this page by placing your own <code>index.html</code> in the <code>static/</code> directory.</p>
 </body>
-<script>
-function checkAddr() {
-  const a = document.getElementById('addr').value.trim();
-  const result = document.getElementById('result');
-  if(!a) { result.textContent = 'Enter an address'; return; }
-  result.textContent = 'Checking...';
-  fetch('/eligibility?address='+a)
-    .then(r=>r.json())
-    .then(res=>{
-      const lines = [];
-      lines.push(`Eligibility as of epoch ${res.epoch}, block ${res.block}:`);
-      lines.push(res.eligible ? '<span style="color:#7bf27b">✅ Eligible</span>' : '<span style="color:#ff6b6b">❌ Not eligible</span>');
-      if(res.state) lines.push('Identity: '+res.state);
-      if(typeof res.stake === 'number') lines.push('Stake: '+res.stake.toLocaleString('en-US')+' IDNA');
-      if(res.reason) lines.push('Reason: '+res.reason);
-      if(res.prediction){
-        const warn = res.prediction.includes('not next');
-        let line = 'Next epoch prediction: '+res.prediction;
-        if(warn) line = '<span style="color:#ffd860">'+line+'</span>';
-        lines.push(warn? '⚠️ '+line : line);
-      }
-      result.innerHTML = lines.join('<br>');
-    })
-    .catch(()=>{ result.textContent = 'Error checking address'; });
-}
-fetch('/api/Epoch/Last').then(r=>r.json()).then(d=>{
-  const thr = parseFloat(d.result.discriminationStakeThreshold);
-  document.getElementById('human-threshold').textContent = Math.round(thr).toLocaleString();
-});
-</script>
 </html>
